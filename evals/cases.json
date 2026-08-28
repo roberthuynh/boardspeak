@@ -1,0 +1,86 @@
+[
+  {
+    "name": "Describe the live board",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "What's on the board?"
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "describe_board",
+        "arguments": {}
+      }
+    ]
+  },
+  {
+    "name": "List Black's options",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "What are my options?"
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "list_legal_moves",
+        "arguments": {}
+      }
+    ]
+  },
+  {
+    "name": "Advance the e7 pawn",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Advance the pawn on e7."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "play_move",
+        "arguments": {
+          "move": "e7-e6"
+        }
+      }
+    ]
+  },
+  {
+    "name": "Take an available pawn",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Can I take anything? Take it."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "play_capture",
+        "arguments": {
+          "move": "e7xd6"
+        }
+      }
+    ]
+  },
+  {
+    "name": "Resign the game",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "I give up."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "resign_game",
+        "arguments": {}
+      }
+    ]
+  }
+]
