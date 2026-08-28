@@ -2,13 +2,15 @@
 
 **Play it by hand. Play it by voice.**
 
+## What it is
+
 Boardspeak is an open-source web board game where White plays with a mouse and Black plays by talking to an AI agent. The page publishes the live board as WebMCP tools, so both players act on the same visible state and the legal tool surface changes with every turn.
 
 > Demo video: coming with the playable release.
 
 ## Status
 
-Boardspeak is under active construction for [The WebMCP Challenge](https://openai.com/webmcp-challenge/). The repository is being kept runnable and documented at every build stage.
+The complete Breakthrough engine and accessible mouse game are playable now; the live WebMCP surface is the next build stage. Boardspeak is under active construction for [The WebMCP Challenge](https://openai.com/webmcp-challenge/), and every pushed stage remains runnable.
 
 ## Quick start
 
@@ -73,7 +75,7 @@ npx webmcp-evals smoke -u http://localhost:3000 -e evals/cases.json
 
 ## Accessibility
 
-Boardspeak will use three audio layers: an always-available `aria-live` move log, the browser Web Speech API with no configuration, and optional OpenAI text-to-speech when a server-side key is present. The board will remain a semantic grid of labeled buttons, while the agent-facing description and legal-move tools let a blind player understand and play the same visual position by conversation.
+The board is a semantic grid of 64 native buttons with exact square and occupancy labels, visible keyboard focus, and a polite live move/win log. The finished audio path adds three layers: that always-available live region, the browser Web Speech API with no configuration, and optional OpenAI text-to-speech when a server-side key is present; the agent-facing description and legal-move tools will let a blind player understand and play the same visual position by conversation.
 
 ## License
 
