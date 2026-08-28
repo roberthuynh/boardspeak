@@ -176,21 +176,28 @@ export function Board({
                   onClick={() => onSquareClick(square)}
                   type="button"
                 >
-                  {file === "a" ? (
-                    <span aria-hidden="true" className="rank-coordinate">
-                      {rank}
-                    </span>
-                  ) : null}
-                  {rank === 1 ? (
-                    <span aria-hidden="true" className="file-coordinate">
-                      {file}
-                    </span>
-                  ) : null}
                   {isLegalTarget ? <span className="legal-target-dot" aria-hidden="true" /> : null}
                 </button>
               );
             }),
           )}
+        </div>
+
+        <div aria-hidden="true" className="board-coordinates">
+          {RANKS.map((rank, row) => (
+            <span className="rank-coordinate" key={rank} style={{ top: `${row * 12.5}%` }}>
+              {rank}
+            </span>
+          ))}
+          {FILES.map((file, column) => (
+            <span
+              className="file-coordinate"
+              key={file}
+              style={{ left: `${column * 12.5}%` }}
+            >
+              {file}
+            </span>
+          ))}
         </div>
 
         <div aria-hidden="true" className="piece-layer">

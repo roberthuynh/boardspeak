@@ -483,14 +483,23 @@ a {
   pointer-events: none;
 }
 
+.board-coordinates {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  pointer-events: none;
+}
+
 .rank-coordinate {
-  top: 0.33rem;
   left: 0.35rem;
+  padding-top: 0.33rem;
 }
 
 .file-coordinate {
-  right: 0.38rem;
   bottom: 0.3rem;
+  width: 12.5%;
+  padding-right: 0.38rem;
+  text-align: right;
 }
 
 .piece-layer {
@@ -748,7 +757,8 @@ a {
   height: 1.4rem;
   place-items: center;
   border-radius: 0.34rem;
-  background: var(--read);
+  border: 1px solid var(--read);
+  background: #49698b;
   color: #f7fbff;
   font-size: 0.56rem;
   font-weight: 950;
@@ -756,7 +766,8 @@ a {
 }
 
 .tool-entry[data-mode="act"] .tool-badge {
-  background: var(--act);
+  border-color: var(--act);
+  background: #a84622;
   color: #fff9f3;
 }
 
