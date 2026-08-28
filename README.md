@@ -91,6 +91,19 @@ npx webmcp-evals smoke -u http://localhost:3000 -e evals/cases.json
 
 The current npm release, `webmcp-evals@0.0.3`, does not yet expose the `smoke` command documented on GoogleChromeLabs `main`. The result above was produced with the current upstream `main` smoke runner using Chrome stable; the exact published-package command is retained for reruns after that release catches up.
 
+Until the next npm release includes `smoke`, the measured result can be reproduced from current upstream `main`:
+
+```bash
+cd <BOARDSPEAK_CHECKOUT>
+EVAL_RUNNER="$(mktemp -d)"
+git clone --depth 1 https://github.com/GoogleChromeLabs/webmcp-tools.git "$EVAL_RUNNER"
+npm --prefix "$EVAL_RUNNER/webmcp-evals" install
+npm --prefix "$EVAL_RUNNER/webmcp-evals" run build
+node "$EVAL_RUNNER/webmcp-evals/dist/bin/webmcp-evals.js" --chrome-channel chrome smoke -u http://localhost:3000 -e "$PWD/evals/cases.json"
+```
+
+The final summary should report `5/5 steps passed across 5 cases`.
+
 ### Product verification
 
 Run the full local gate:
