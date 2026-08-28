@@ -273,6 +273,7 @@ export function gameReducer(state: SessionState, action: GameAction): SessionSta
       return {
         ...state,
         preferences: { ...state.preferences, narrate: action.enabled },
+        announcement: action.enabled ? "Move narration on." : "Move narration off.",
         revision: nextRevision(state),
       };
 

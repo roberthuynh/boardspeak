@@ -435,11 +435,11 @@ a {
   background: var(--square-dark);
 }
 
-.board-square:hover:not(:disabled) {
+.board-square:hover:not([aria-disabled="true"]) {
   box-shadow: inset 0 0 0 4px rgb(74 54 31 / 28%);
 }
 
-.board-square:disabled {
+.board-square[aria-disabled="true"] {
   cursor: default;
 }
 

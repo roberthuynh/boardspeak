@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
@@ -127,8 +128,11 @@ function GameInner() {
   const lastNarratedMoveRef = useRef<string | null>(null);
   const lastNarratedOutcomeRef = useRef<string | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     stateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
     const ready = waitersRef.current.filter(
       (waiter) => waiter.revision <= state.revision,
     );
@@ -681,7 +685,11 @@ function GameInner() {
             ) : null}
           </div>
 
-          <MoveLog entries={state.history} winnerText={gameWinner} />
+          <MoveLog
+            announcement={state.announcement}
+            entries={state.history}
+            winnerText={gameWinner}
+          />
         </section>
 
         <aside className="agent-column" aria-label="Agent tools and activity">

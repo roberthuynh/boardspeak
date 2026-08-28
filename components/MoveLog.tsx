@@ -6,14 +6,13 @@ export interface MoveLogEntry {
 }
 
 interface MoveLogProps {
+  announcement: string;
   entries: readonly MoveLogEntry[];
   winnerText?: string | null;
 }
 
-export function MoveLog({ entries, winnerText = null }: MoveLogProps) {
+export function MoveLog({ announcement, entries, winnerText = null }: MoveLogProps) {
   const newestFirst = [...entries].reverse();
-  const latestMove = newestFirst[0]?.plainText;
-  const announcement = [latestMove, winnerText].filter(Boolean).join(". ");
 
   return (
     <section className="move-log" aria-labelledby="move-log-heading">
@@ -24,7 +23,7 @@ export function MoveLog({ entries, winnerText = null }: MoveLogProps) {
         </span>
       </div>
 
-      <p aria-atomic="true" aria-live="polite" className="sr-only">
+      <p aria-atomic="true" aria-live="polite" className="sr-only" role="status">
         {announcement}
       </p>
 

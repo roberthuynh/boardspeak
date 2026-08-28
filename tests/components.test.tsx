@@ -41,6 +41,28 @@ describe("accessible board experience", () => {
     expect(screen.getByRole("button", { name: "e7, black pawn" })).toBeVisible();
   });
 
+  it("keeps an inactive board focusable for position inspection", () => {
+    const onSquareClick = vi.fn();
+    render(
+      <Board
+        disabled
+        legalTargets={[]}
+        onSquareClick={onSquareClick}
+        selected={null}
+        state={initialState()}
+        suggestion={null}
+      />,
+    );
+
+    const square = screen.getByRole("button", { name: "e2, white pawn" });
+    expect(square).toHaveAttribute("aria-disabled", "true");
+    expect(square).not.toBeDisabled();
+    square.focus();
+    expect(square).toHaveFocus();
+    fireEvent.click(square);
+    expect(onSquareClick).not.toHaveBeenCalled();
+  });
+
   it("plays White and Black by clicking the same board", async () => {
     render(<Game />);
 
@@ -59,12 +81,24 @@ describe("accessible board experience", () => {
         screen.getByRole("heading", { name: "White to move" }),
       ).toBeVisible(),
     );
-    expect(screen.getAllByText("Black e7 moves to e6")).toHaveLength(2);
+    expect(screen.getAllByText("Black e7 moves to e6")).toHaveLength(1);
+  });
+
+  it("routes reducer messages through one polite status region", async () => {
+    const { container } = render(<Game />);
+
+    expect(container.querySelectorAll('[aria-live="polite"]')).toHaveLength(1);
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("White to move.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Narrate moves" }));
+    await waitFor(() => expect(status).toHaveTextContent("Move narration off."));
   });
 
   it("keeps move and win announcements in one polite live region", () => {
     const { container } = render(
       <MoveLog
+        announcement="White e2 moves to e3. White wins: reached the far rank."
         entries={[{ notation: "e2-e3", plainText: "White e2 moves to e3" }]}
         winnerText="White wins: reached the far rank."
       />,

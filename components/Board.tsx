@@ -162,6 +162,7 @@ export function Board({
               return (
                 <button
                   aria-label={`${square}, ${piece ? `${piece.side} pawn` : "empty"}`}
+                  aria-disabled={disabled || undefined}
                   aria-pressed={isSelected}
                   className="board-square"
                   data-file={file}
@@ -171,9 +172,10 @@ export function Board({
                   data-selected={isSelected ? "true" : undefined}
                   data-square={square}
                   data-tone={(FILES.indexOf(file) + rank) % 2 === 0 ? "light" : "dark"}
-                  disabled={disabled}
                   key={square}
-                  onClick={() => onSquareClick(square)}
+                  onClick={() => {
+                    if (!disabled) onSquareClick(square);
+                  }}
                   type="button"
                 >
                   {isLegalTarget ? <span className="legal-target-dot" aria-hidden="true" /> : null}

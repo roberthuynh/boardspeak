@@ -32,11 +32,6 @@ export function ToolRail({ entries }: ToolRailProps) {
       exiting: true,
     })),
   ];
-  const actTools = entries.filter((entry) => entry.mode === "ACT").map((entry) => entry.name);
-  const announcement = `${entries.length} tools available.${
-    actTools.length > 0 ? ` Actions available: ${actTools.join(", ")}.` : ""
-  }`;
-
   useEffect(() => {
     const nextNames = new Set(entries.map((entry) => entry.name));
     const removed = previousEntriesRef.current.filter(
@@ -76,10 +71,6 @@ export function ToolRail({ entries }: ToolRailProps) {
         <p className="panel-kicker">Live WebMCP surface</p>
         <h2 id="tool-rail-heading">Tools your agent can see right now</h2>
       </div>
-
-      <p aria-atomic="true" aria-live="polite" className="sr-only">
-        {announcement}
-      </p>
 
       {renderedEntries.length > 0 ? (
         <ul className="tool-list">
