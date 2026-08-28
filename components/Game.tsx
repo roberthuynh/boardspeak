@@ -35,6 +35,7 @@ import {
   type SessionState,
   type ToolTraceEntry,
 } from "@/lib/game";
+import { createNarrator } from "@/lib/narration";
 import {
   NOTATION,
   RULES,
@@ -67,6 +68,25 @@ function winnerText(outcome: GameOutcome | null): string | null {
   }[outcome.reason];
 
   return `${side} wins: ${explanation}.`;
+}
+
+function narrationWinText(outcome: GameOutcome): string {
+  const side = outcome.winner === "white" ? "White" : "Black";
+
+  switch (outcome.reason) {
+    case "goal":
+      return `${side} wins by reaching the far rank.`;
+    case "annihilation":
+      return `${side} wins by capturing every opposing pawn.`;
+    case "blocked": {
+      const loser = outcome.winner === "white" ? "Black" : "White";
+      return `${side} wins because ${loser} has no legal moves.`;
+    }
+    case "resignation": {
+      const loser = outcome.winner === "white" ? "Black" : "White";
+      return `${loser} resigns. ${side} wins.`;
+    }
+  }
 }
 
 function traceSummary(value: unknown): string {
@@ -103,6 +123,9 @@ function GameInner() {
   const mouseMovePendingRef = useRef(false);
   const [nativeSupported, setNativeSupported] = useState<boolean | null>(null);
   const [showDemo, setShowDemo] = useState(false);
+  const [narrator] = useState(() => createNarrator());
+  const lastNarratedMoveRef = useRef<string | null>(null);
+  const lastNarratedOutcomeRef = useRef<string | null>(null);
 
   useEffect(() => {
     stateRef.current = state;
@@ -124,8 +147,9 @@ function GameInner() {
         waiter.resolve(stateRef.current);
       }
       waitersRef.current = [];
+      narrator.cancel();
     };
-  }, []);
+  }, [narrator]);
 
   const dispatchAndCommit = useCallback(
     (action: GameAction): Promise<SessionState> => {
@@ -395,6 +419,58 @@ function GameInner() {
     state.preferences.practice,
   ]);
 
+  useEffect(() => {
+    const move = state.position.lastMove;
+    const moveKey = move
+      ? `${state.position.moveNumber}-${move.pieceId}-${move.notation}`
+      : null;
+    const outcomeKey = state.outcome
+      ? `${state.outcome.winner}-${state.outcome.reason}-${state.position.moveNumber}`
+      : null;
+
+    if (!state.preferences.narrate) {
+      lastNarratedMoveRef.current = moveKey;
+      lastNarratedOutcomeRef.current = outcomeKey;
+      narrator.cancel();
+      return;
+    }
+
+    const newMove = move && moveKey !== lastNarratedMoveRef.current;
+    const newOutcome =
+      state.outcome && outcomeKey !== lastNarratedOutcomeRef.current;
+    lastNarratedMoveRef.current = moveKey;
+    lastNarratedOutcomeRef.current = outcomeKey;
+
+    if (!newMove && !newOutcome) {
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      if (newMove) {
+        const side = move.side === "white" ? "White" : "Black";
+        const phrase = move.capture
+          ? `${side} ${move.from} takes ${move.to}.`
+          : `${side} ${move.from} moves to ${move.to}.`;
+        await narrator.speak(phrase);
+      }
+      if (!cancelled && newOutcome) {
+        await narrator.speak(narrationWinText(state.outcome));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      narrator.cancel();
+    };
+  }, [
+    narrator,
+    state.outcome,
+    state.position.lastMove,
+    state.position.moveNumber,
+    state.preferences.narrate,
+  ]);
+
   const movesFromSelection = useMemo(() => selectedMoves(state), [state]);
   const legalTargets = useMemo(
     () => movesFromSelection.map((move) => move.to),
@@ -520,6 +596,22 @@ function GameInner() {
             </span>
             Play the board
           </button>
+          <button
+            aria-pressed={state.preferences.narrate}
+            className="toggle-control"
+            onClick={() =>
+              dispatch({
+                type: "setNarration",
+                enabled: !state.preferences.narrate,
+              })
+            }
+            type="button"
+          >
+            <span aria-hidden="true" className="toggle-track">
+              <span className="toggle-thumb" />
+            </span>
+            Narrate moves
+          </button>
           <button className="new-game-button" onClick={requestNewGame} type="button">
             New game
           </button>
@@ -596,8 +688,8 @@ function GameInner() {
           <ToolRail entries={state.registry} />
           <CallTrace entries={state.trace} />
           <p className="voice-disclosure">
-            Move text is always announced through a polite live region for screen
-            readers.
+            Move text is always announced to screen readers. Browser speech works
+            without a key; enhanced narration, when configured, is AI-generated.
           </p>
         </aside>
       </main>

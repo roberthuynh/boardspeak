@@ -10,7 +10,7 @@ Boardspeak is an open-source web board game where White plays with a mouse and B
 
 ## Status
 
-The complete Breakthrough engine, mouse game, nine-tool WebMCP surface, and solo practice mode are playable now. Boardspeak is under active construction for [The WebMCP Challenge](https://openai.com/webmcp-challenge/), and every pushed stage remains runnable.
+The complete Breakthrough engine, mouse game, nine-tool WebMCP surface, solo practice mode, and layered narration are playable now. Boardspeak is under active construction for [The WebMCP Challenge](https://openai.com/webmcp-challenge/), and every pushed stage remains runnable.
 
 ## Quick start
 
@@ -24,6 +24,8 @@ Open [http://localhost:3000](http://localhost:3000).
 Add `?demo=1` in a plain browser. After White moves, **Demo: agent turn** invokes one legal Black move through the same traced execution path an agent uses.
 
 Turn on **Play the board** to let the built-in White bot answer after 300ms. Black remains controlled by the agent or by mouse, so one person can demonstrate the complete game loop.
+
+Narration is on by default and needs no configuration. Without `OPENAI_API_KEY`, moves use the browser Web Speech API; with the key set only on the server, `/api/narrate` returns short AI-generated speech and silently falls back to Web Speech on any error.
 
 ## Play it with your agent
 
@@ -81,7 +83,7 @@ npx webmcp-evals smoke -u http://localhost:3000 -e evals/cases.json
 
 ## Accessibility
 
-The board is a semantic grid of 64 native buttons with exact square and occupancy labels, visible keyboard focus, and a polite live move/win log. The finished audio path adds three layers: that always-available live region, the browser Web Speech API with no configuration, and optional OpenAI text-to-speech when a server-side key is present; the agent-facing description and legal-move tools will let a blind player understand and play the same visual position by conversation.
+The board is a semantic grid of 64 native buttons with exact square and occupancy labels, visible keyboard focus, and a polite live move/win log. Three audio layers work in order: that always-available live region, the browser Web Speech API with no configuration, and optional OpenAI text-to-speech when a server-side key is present. Enhanced narration is disclosed in the interface as AI-generated. The agent-facing description and legal-move tools let a blind player understand and play the same visual position by conversation.
 
 ## License
 
