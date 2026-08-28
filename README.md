@@ -10,7 +10,7 @@ Boardspeak is an open-source web board game where White plays with a mouse and B
 
 ## Status
 
-The complete Breakthrough engine, mouse game, and nine-tool WebMCP surface are playable now. Boardspeak is under active construction for [The WebMCP Challenge](https://openai.com/webmcp-challenge/), and every pushed stage remains runnable.
+The complete Breakthrough engine, mouse game, nine-tool WebMCP surface, and solo practice mode are playable now. Boardspeak is under active construction for [The WebMCP Challenge](https://openai.com/webmcp-challenge/), and every pushed stage remains runnable.
 
 ## Quick start
 
@@ -22,6 +22,8 @@ pnpm dev
 Open [http://localhost:3000](http://localhost:3000).
 
 Add `?demo=1` in a plain browser. After White moves, **Demo: agent turn** invokes one legal Black move through the same traced execution path an agent uses.
+
+Turn on **Play the board** to let the built-in White bot answer after 300ms. Black remains controlled by the agent or by mouse, so one person can demonstrate the complete game loop.
 
 ## Play it with your agent
 

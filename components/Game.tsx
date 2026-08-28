@@ -15,6 +15,7 @@ import { ConfirmProvider, useConfirm } from "./ConfirmModal";
 import { MoveLog } from "./MoveLog";
 import { ToolRail } from "./ToolRail";
 import { WebMCPBridge, type ToolExecutor } from "./WebMCPBridge";
+import { chooseWhiteMove } from "@/lib/bot";
 import {
   legalMoves,
   threats,
@@ -368,6 +369,32 @@ function GameInner() {
     };
   }, [executeTool]);
 
+  useEffect(() => {
+    if (
+      !state.preferences.practice ||
+      state.outcome ||
+      state.position.sideToMove !== "white"
+    ) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      const current = stateRef.current;
+      const move = chooseWhiteMove(current.position);
+      if (!move || current.outcome || current.position.sideToMove !== "white") {
+        return;
+      }
+      void dispatchAndCommit({ type: "move", move, source: "bot" });
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    dispatchAndCommit,
+    state.outcome,
+    state.position,
+    state.preferences.practice,
+  ]);
+
   const movesFromSelection = useMemo(() => selectedMoves(state), [state]);
   const legalTargets = useMemo(
     () => movesFromSelection.map((move) => move.to),
@@ -448,7 +475,9 @@ function GameInner() {
 
   const turn = state.position.sideToMove;
   const gameWinner = winnerText(state.outcome);
-  const boardDisabled = Boolean(state.outcome);
+  const boardDisabled = Boolean(
+    state.outcome || (state.preferences.practice && turn === "white"),
+  );
   const demoEnabled = !state.outcome && turn === "black";
 
   return (
@@ -475,6 +504,22 @@ function GameInner() {
         </p>
 
         <div className="game-controls" aria-label="Game preferences">
+          <button
+            aria-pressed={state.preferences.practice}
+            className="toggle-control"
+            onClick={() =>
+              dispatch({
+                type: "setPractice",
+                enabled: !state.preferences.practice,
+              })
+            }
+            type="button"
+          >
+            <span aria-hidden="true" className="toggle-track">
+              <span className="toggle-thumb" />
+            </span>
+            Play the board
+          </button>
           <button className="new-game-button" onClick={requestNewGame} type="button">
             New game
           </button>
@@ -509,7 +554,11 @@ function GameInner() {
               </h2>
             </div>
             <span className="turn-chip" data-side={turn}>
-              {turn === "white" ? "By hand" : "By voice or mouse"}
+              {state.preferences.practice && turn === "white"
+                ? "Board thinking…"
+                : turn === "white"
+                  ? "By hand"
+                  : "By voice or mouse"}
             </span>
           </div>
 
