@@ -10,7 +10,7 @@ Boardspeak is an open-source web board game where White plays with a mouse and B
 
 ## Status
 
-The complete Breakthrough engine and accessible mouse game are playable now; the live WebMCP surface is the next build stage. Boardspeak is under active construction for [The WebMCP Challenge](https://openai.com/webmcp-challenge/), and every pushed stage remains runnable.
+The complete Breakthrough engine, mouse game, and nine-tool WebMCP surface are playable now. Boardspeak is under active construction for [The WebMCP Challenge](https://openai.com/webmcp-challenge/), and every pushed stage remains runnable.
 
 ## Quick start
 
@@ -20,6 +20,8 @@ pnpm dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+Add `?demo=1` in a plain browser. After White moves, **Demo: agent turn** invokes one legal Black move through the same traced execution path an agent uses.
 
 ## Play it with your agent
 
@@ -35,11 +37,13 @@ Open [http://localhost:3000](http://localhost:3000).
 2. Install the Model Context Tool Inspector extension.
 3. Open Boardspeak and inspect the tools registered by the page.
 
-The full judge walkthrough and troubleshooting notes will be added as each integration is verified.
+Without native WebMCP, Boardspeak shows a dismissible setup banner and loads the GoogleChromeLabs compatibility layer so the Inspector can still discover the page tools.
 
 ## How it works
 
 An agent could play this game three ways. A remote MCP server gives the agent its own copy of the game and cuts the page out of the loop, so the two players stop looking at the same truth. A browser agent guesses legality from pixels. WebMCP puts the tools in the page itself: same tab, same session, same state the human is watching, and legality is not merely a check inside the tool. It is the shape of the tool, an enum regenerated every turn, so an illegal move is not a value the agent can send. Tools that do not apply do not exist. The specification lists improving accessibility through agents as intermediaries as an explicit goal; Boardspeak demonstrates that goal directly.
+
+Each tool uses the imperative `document.modelContext.registerTool` path through `use-webmcp-tool`. When a turn changes the move enum, the previous registration is aborted and the same tool name is registered with the new schema. Every mutation resolves only after React has committed the matching board and rail state, and every call is visible in the on-page trace.
 
 > Tool-rail transition GIF: coming with the WebMCP integration.
 

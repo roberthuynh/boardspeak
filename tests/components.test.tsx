@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Board } from "@/components/Board";
 import { Game } from "@/components/Game";
@@ -35,16 +41,24 @@ describe("accessible board experience", () => {
     expect(screen.getByRole("button", { name: "e7, black pawn" })).toBeVisible();
   });
 
-  it("plays White and Black by clicking the same board", () => {
+  it("plays White and Black by clicking the same board", async () => {
     render(<Game />);
 
     fireEvent.click(screen.getByRole("button", { name: "e2, white pawn" }));
     fireEvent.click(screen.getByRole("button", { name: "e3, empty" }));
-    expect(screen.getByRole("heading", { name: "Black to move" })).toBeVisible();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Black to move" }),
+      ).toBeVisible(),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "e7, black pawn" }));
     fireEvent.click(screen.getByRole("button", { name: "e6, empty" }));
-    expect(screen.getByRole("heading", { name: "White to move" })).toBeVisible();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "White to move" }),
+      ).toBeVisible(),
+    );
     expect(screen.getAllByText("Black e7 moves to e6")).toHaveLength(2);
   });
 
