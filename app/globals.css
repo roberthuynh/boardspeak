@@ -14,6 +14,7 @@
   --gold: #b8862b;
   --line: #41382f;
   --shadow: #080706;
+  --boardspeak-backdrop: url("/art/boardspeak-backdrop.webp");
 }
 
 * {
