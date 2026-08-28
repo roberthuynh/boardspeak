@@ -11,10 +11,10 @@
     "url": "https://github.com/roberthuynh/boardspeak.git"
   },
   "scripts": {
-    "dev": "next dev --turbopack",
-    "dev:eval": "NEXT_PUBLIC_EVAL_MODE=1 next dev --turbopack",
-    "build": "next build --turbopack",
-    "start": "next start",
+    "dev": "NEXT_TELEMETRY_DISABLED=1 next dev --turbopack",
+    "dev:eval": "NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_EVAL_MODE=1 next dev --turbopack",
+    "build": "NEXT_TELEMETRY_DISABLED=1 next build --turbopack",
+    "start": "NEXT_TELEMETRY_DISABLED=1 next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
