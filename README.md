@@ -55,6 +55,35 @@ An agent could play this game three ways. A remote MCP server gives the agent it
 
 Each tool uses the imperative `document.modelContext.registerTool` path through `use-webmcp-tool`. When a turn changes the move enum, the previous registration is aborted and the same tool name is registered with the new schema. Every mutation resolves only after React has committed the matching board and rail state, and every call is visible in the on-page trace.
 
+### Where registration happens
+
+[`WebMCPBridge`](components/WebMCPBridge.tsx) supplies each live schema and traced executor to [`use-webmcp-tool`](https://github.com/GoogleChromeLabs/use-webmcp-tool). The hook makes the imperative call below. When an enabled state or move enum changes, React runs the previous effect cleanup, aborting that registration before the hook registers the current schema.
+
+The hook's core registration path, with output formatting and error normalization shortened here, is:
+
+```ts
+const controller = new AbortController();
+
+document.modelContext.registerTool(
+  {
+    name,
+    description,
+    inputSchema,
+    annotations,
+    async execute(args) {
+      const result = await executeRef.current(args);
+      return toToolResponse(result);
+    },
+  },
+  { signal: controller.signal },
+);
+
+// React effect cleanup unregisters the old schema before the next registration.
+return () => {
+  controller.abort();
+};
+```
+
 ![The WebMCP tool rail changing from White's suggestion surface to Black's exact move enum and back after the agent acts](./public/readme/tool-rail-turn.gif)
 
 ## Tool surface
@@ -87,20 +116,7 @@ npx webmcp-evals smoke -u http://localhost:3000 -e evals/cases.json
 | Take a piece | `play_capture` with `e7xd6` | PASS |
 | Resign | `resign_game` | PASS |
 
-**Result: 5/5 steps passed across 5 cases.** Each case opens a fresh page. The eval-only fixture starts on Black's turn with both the required advance and capture legal, and auto-confirms only the smoke-only resignation flow.
-
-The current npm release, `webmcp-evals@0.0.3`, does not yet expose the `smoke` command documented on GoogleChromeLabs `main`. The result above was produced with the current upstream `main` smoke runner using Chrome stable; the exact published-package command is retained for reruns after that release catches up.
-
-Until the next npm release includes `smoke`, the measured result can be reproduced from current upstream `main`:
-
-```bash
-cd <BOARDSPEAK_CHECKOUT>
-EVAL_RUNNER="$(mktemp -d)"
-git clone --depth 1 https://github.com/GoogleChromeLabs/webmcp-tools.git "$EVAL_RUNNER"
-npm --prefix "$EVAL_RUNNER/webmcp-evals" install
-npm --prefix "$EVAL_RUNNER/webmcp-evals" run build
-node "$EVAL_RUNNER/webmcp-evals/dist/bin/webmcp-evals.js" --chrome-channel chrome smoke -u http://localhost:3000 -e "$PWD/evals/cases.json"
-```
+**Result: 5/5 steps passed across 5 cases.** Each case opens a fresh page. The eval-only fixture starts on Black's turn with both the required advance and capture legal, and auto-accepts both the resignation confirmation and the tool-driven New Game confirmation.
 
 The final summary should report `5/5 steps passed across 5 cases`.
 
@@ -131,4 +147,4 @@ The board is a semantic grid of 64 native buttons with exact square and occupanc
 
 ## License
 
-[MIT](LICENSE) © 2026 Robert Huynh.
+[MIT](LICENSE) © 2026 Robert Huynh. Third-party components and complete notices are listed in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
