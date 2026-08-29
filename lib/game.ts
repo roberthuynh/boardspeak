@@ -68,7 +68,7 @@ export type GameAction =
   | { readonly type: "setPractice"; readonly enabled: boolean }
   | { readonly type: "setNarration"; readonly enabled: boolean }
   | { readonly type: "addTrace"; readonly entry: ToolTraceEntry }
-  | { readonly type: "dismissBanner" };
+  | { readonly type: "setBannerDismissed"; readonly dismissed: boolean };
 
 function rank(square: Square): number {
   return Number(square[1]);
@@ -284,10 +284,10 @@ export function gameReducer(state: SessionState, action: GameAction): SessionSta
         revision: nextRevision(state),
       };
 
-    case "dismissBanner":
+    case "setBannerDismissed":
       return {
         ...state,
-        bannerDismissed: true,
+        bannerDismissed: action.dismissed,
         revision: nextRevision(state),
       };
   }

@@ -628,7 +628,9 @@ function GameInner() {
           dismissed={state.bannerDismissed}
           nativeSupported={nativeSupported}
           onDemo={runDemo}
-          onDismiss={() => dispatch({ type: "dismissBanner" })}
+          onDismissedChange={(dismissed) =>
+            dispatch({ type: "setBannerDismissed", dismissed })
+          }
           showDemo={showDemo}
         />
       ) : null}
@@ -670,10 +672,28 @@ function GameInner() {
           />
 
           <div className="board-caption">
-            <p>
-              Select a pawn, then a marked square. Diagonal moves are allowed even
-              without a capture.
-            </p>
+            <div className="board-guidance">
+              <p>
+                Select a pawn, then a marked square. Diagonal moves are allowed even
+                without a capture.
+              </p>
+              <p className="win-summary">
+                <strong>How to win:</strong> {RULES[2]}
+              </p>
+              <details className="how-to-play">
+                <summary>How to play</summary>
+                <ol>
+                  {RULES.map((rule) => (
+                    <li key={rule}>{rule}</li>
+                  ))}
+                </ol>
+                <p>
+                  <strong>Notation:</strong> quiet moves use{" "}
+                  <code>{NOTATION.move}</code>; captures use{" "}
+                  <code>{NOTATION.capture}</code>.
+                </p>
+              </details>
+            </div>
             {state.suggestion ? (
               <button
                 className="quiet-action"

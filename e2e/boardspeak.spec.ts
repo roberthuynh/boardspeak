@@ -79,6 +79,29 @@ test("demo mode sends Black through the traced tool execution path", async ({ pa
   expect(newestTrace).toMatchObject({ name: "play_move", isError: false });
 });
 
+test("plain-browser setup can collapse without hiding the demo action", async ({
+  page,
+}) => {
+  await openPlainBrowserGame(page, "/?demo=1");
+
+  await expect(
+    page.getByRole("heading", { name: "Voice play needs WebMCP" }),
+  ).toBeVisible();
+  const demo = page.getByRole("button", { name: "Demo: agent turn" });
+  await expect(demo).toBeVisible();
+
+  await page.getByRole("button", { name: "Hide setup" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Voice play needs WebMCP" }),
+  ).toBeHidden();
+  await expect(demo).toBeVisible();
+
+  await page.getByRole("button", { name: "Show agent setup" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Voice play needs WebMCP" }),
+  ).toBeVisible();
+});
+
 test("practice mode gives Black a visible White bot reply", async ({ page }) => {
   await openPlainBrowserGame(page);
 

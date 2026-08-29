@@ -9,10 +9,12 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AgentBanner } from "@/components/AgentBanner";
 import { Board } from "@/components/Board";
 import { Game } from "@/components/Game";
 import { MoveLog } from "@/components/MoveLog";
 import { initialState } from "@/lib/breakthrough";
+import { NOTATION, RULES } from "@/lib/tools";
 
 describe("accessible board experience", () => {
   afterEach(() => cleanup());
@@ -108,5 +110,67 @@ describe("accessible board experience", () => {
     expect(region).toHaveTextContent(
       "White e2 moves to e3. White wins: reached the far rank.",
     );
+  });
+
+  it("keeps plain-browser actions available while setup copy is hidden", () => {
+    const onDismissedChange = vi.fn();
+    const onDemo = vi.fn();
+    const { rerender } = render(
+      <AgentBanner
+        demoEnabled={false}
+        dismissed={false}
+        nativeSupported={false}
+        onDemo={onDemo}
+        onDismissedChange={onDismissedChange}
+        showDemo
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Voice play needs WebMCP" }),
+    ).toBeVisible();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByText(/ChatGPT desktop:/)).toBeVisible();
+    expect(screen.getByText(/Chrome 149\+:/)).toBeVisible();
+
+    const hide = screen.getByRole("button", { name: "Hide setup" });
+    expect(hide).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(hide);
+    expect(onDismissedChange).toHaveBeenCalledWith(true);
+
+    rerender(
+      <AgentBanner
+        demoEnabled
+        dismissed
+        nativeSupported={false}
+        onDemo={onDemo}
+        onDismissedChange={onDismissedChange}
+        showDemo
+      />,
+    );
+
+    expect(
+      screen.queryByRole("heading", { name: "Voice play needs WebMCP" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Demo: agent turn" }),
+    ).toBeVisible();
+    const show = screen.getByRole("button", { name: "Show agent setup" });
+    expect(show).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(show);
+    expect(onDismissedChange).toHaveBeenCalledWith(false);
+  });
+
+  it("renders shared rules and notation beside the board", () => {
+    const { container } = render(<Game />);
+
+    expect(container.querySelector(".win-summary")).toHaveTextContent(RULES[2]);
+    const details = screen.getByText("How to play").closest("details");
+    expect(details).not.toBeNull();
+    for (const rule of RULES) {
+      expect(details).toHaveTextContent(rule);
+    }
+    expect(details).toHaveTextContent(NOTATION.move);
+    expect(details).toHaveTextContent(NOTATION.capture);
   });
 });

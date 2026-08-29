@@ -100,6 +100,20 @@ describe("game session reducer", () => {
     expect(reset.position.sideToMove).toBe("white");
   });
 
+  it("hides and restores the plain-browser setup copy", () => {
+    const hidden = gameReducer(createSessionState(), {
+      type: "setBannerDismissed",
+      dismissed: true,
+    });
+    const restored = gameReducer(hidden, {
+      type: "setBannerDismissed",
+      dismissed: false,
+    });
+
+    expect(hidden.bannerDismissed).toBe(true);
+    expect(restored.bannerDismissed).toBe(false);
+  });
+
   it("keeps only the newest 50 trace entries", () => {
     let state = createSessionState();
     for (let index = 0; index < 55; index += 1) {
