@@ -2,8 +2,11 @@ import {
   applyMove,
   initialState,
   legalMoves,
+  toJSON,
+  toText,
   winner,
   type GameState,
+  type GameSnapshot,
   type Move,
   type Piece,
   type Side,
@@ -21,6 +24,12 @@ export type WinReason = "goal" | "annihilation" | "blocked" | "resignation";
 export interface GameOutcome {
   readonly winner: Side;
   readonly reason: WinReason;
+}
+
+export interface SessionBoardPayload {
+  readonly board: string;
+  readonly snapshot: GameSnapshot;
+  readonly outcome: GameOutcome | null;
 }
 
 export interface GameHistoryEntry {
@@ -103,6 +112,28 @@ function winnerSentence(outcome: GameOutcome): string {
   }[outcome.reason];
 
   return `${side} ${ending}. ${side} wins.`;
+}
+
+export function sessionBoardPayload(state: SessionState): SessionBoardPayload {
+  const engineSnapshot = toJSON(state.position);
+  const effectiveWinner = state.outcome?.winner ?? engineSnapshot.winner;
+  const winnerLabel = effectiveWinner
+    ? `${effectiveWinner[0].toUpperCase()}${effectiveWinner.slice(1)}`
+    : "none";
+  const outcomeLabel = state.outcome ? ` (${state.outcome.reason})` : "";
+  const board = toText(state.position).replace(
+    /Winner: (?:White|Black|none)\.$/,
+    `Winner: ${winnerLabel}${outcomeLabel}.`,
+  );
+
+  return {
+    board,
+    snapshot: {
+      ...engineSnapshot,
+      winner: effectiveWinner,
+    },
+    outcome: state.outcome,
+  };
 }
 
 function withRegistry(state: Omit<SessionState, "registry">): SessionState {

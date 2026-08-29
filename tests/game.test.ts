@@ -5,6 +5,7 @@ import {
   createSessionState,
   gameReducer,
   selectedMoves,
+  sessionBoardPayload,
   type ToolTraceEntry,
 } from "@/lib/game";
 
@@ -112,6 +113,18 @@ describe("game session reducer", () => {
 
     expect(hidden.bannerDismissed).toBe(true);
     expect(restored.bannerDismissed).toBe(false);
+  });
+
+  it("overlays a session resignation onto board text and JSON", () => {
+    const resigned = gameReducer(createSessionState(), {
+      type: "resign",
+      side: "black",
+    });
+    const payload = sessionBoardPayload(resigned);
+
+    expect(payload.board).toContain("Winner: White (resignation).");
+    expect(payload.snapshot.winner).toBe("white");
+    expect(payload.outcome).toEqual({ winner: "white", reason: "resignation" });
   });
 
   it("keeps only the newest 50 trace entries", () => {

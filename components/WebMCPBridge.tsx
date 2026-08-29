@@ -137,7 +137,7 @@ export function WebMCPBridge({
     ...TOOL_META.list_threats,
     inputSchema: EMPTY_INPUT_SCHEMA,
     annotations: { readOnlyHint: true },
-    enabled: currentThreats.length > 0,
+    enabled: !gameOver && currentThreats.length > 0,
     execute: (args) => executeTool("list_threats", args),
   });
 

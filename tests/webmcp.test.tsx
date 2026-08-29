@@ -13,14 +13,21 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { Game } from "@/components/Game";
+import { WebMCPBridge } from "@/components/WebMCPBridge";
 import {
   applyMove,
   legalMoves,
   winner,
   type GameState,
   type Move,
+  type Square,
 } from "@/lib/breakthrough";
-import type { SessionState } from "@/lib/game";
+import { createSessionState, type SessionState } from "@/lib/game";
+import {
+  compactLegalMoves,
+  tagMoves,
+  type ToolName,
+} from "@/lib/tools";
 
 const INITIAL_WHITE_SURFACE = [
   "describe_board",
@@ -117,6 +124,53 @@ function moveEnum(tool: WebMCPToolDefinition): readonly string[] {
   return schema?.properties?.move?.enum ?? [];
 }
 
+function toolResponse(result: unknown): {
+  readonly content: readonly { readonly type: string; readonly text?: string }[];
+  readonly isError?: boolean;
+} {
+  if (!result || typeof result !== "object" || !("content" in result)) {
+    throw new Error("Tool did not return a normalized WebMCP response.");
+  }
+  return result as {
+    readonly content: readonly { readonly type: string; readonly text?: string }[];
+    readonly isError?: boolean;
+  };
+}
+
+function toolPayload<T>(result: unknown): T {
+  const text = toolResponse(result).content[0]?.text;
+  if (!text) {
+    throw new Error("Tool response did not contain JSON text.");
+  }
+  return JSON.parse(text) as T;
+}
+
+function highMobilityPosition(): GameState {
+  const rows = [
+    { files: "bcdefg", rank: 7 },
+    { files: "bcdefg", rank: 5 },
+    { files: "bcde", rank: 3 },
+  ] as const;
+  const blackPieces = rows.flatMap(({ files, rank }) =>
+    [...files].map((file) => ({
+      id: `black-${file}${rank}`,
+      side: "black" as const,
+      square: `${file}${rank}` as Square,
+    })),
+  );
+
+  return {
+    pieces: [
+      ...blackPieces,
+      { id: "white-a1", side: "white", square: "a1" },
+    ],
+    sideToMove: "black",
+    moveNumber: 12,
+    lastMove: null,
+    captured: { white: 15, black: 0 },
+  };
+}
+
 function boardButton(container: HTMLElement, square: string): HTMLButtonElement {
   const button = container.querySelector<HTMLButtonElement>(
     `button[data-square="${square}"]`,
@@ -162,6 +216,15 @@ async function playWhiteWithMouse(container: HTMLElement, move: Move) {
   );
   fireEvent.click(boardButton(container, move.to));
   await waitFor(() => expect(currentSession().position.lastMove?.notation).toBe(move.notation));
+}
+
+async function playBlackWithTool(notation: string) {
+  const tool = document.modelContext as StrictModelContext;
+  const execution = beginToolExecution(tool.tool("play_move"), { move: notation });
+  await execution;
+  await waitFor(() =>
+    expect(currentSession().position.lastMove?.notation).toBe(notation),
+  );
 }
 
 describe("the live WebMCP tool surface", () => {
@@ -221,6 +284,148 @@ describe("the live WebMCP tool surface", () => {
     expect(screen.getByRole("heading", { name: "White to move" })).toBeVisible();
     expect(container.querySelector('.trace-entry code')?.textContent).toBe("play_move");
     expect(modelContext.duplicateErrors).toEqual([]);
+  });
+
+  it("returns the root move list in the normalized response budget", async () => {
+    render(<Game />);
+    await waitFor(() => expect(modelContext.active.has("list_legal_moves")).toBe(true));
+
+    const result = await beginToolExecution(
+      modelContext.tool("list_legal_moves"),
+      {},
+    );
+    const response = toolResponse(result);
+    const payload = toolPayload<{
+      total: number;
+      returned: number;
+      truncated: boolean;
+      moves: Record<string, string[]>;
+    }>(result);
+
+    expect(response.content).toHaveLength(1);
+    expect(response.content[0]?.type).toBe("text");
+    expect(JSON.stringify(response).length).toBeLessThanOrEqual(1_500);
+    expect(payload).toMatchObject({ total: 22, returned: 22, truncated: false });
+    expect(Object.values(payload.moves).flat()).toHaveLength(22);
+  });
+
+  it("normalizes a valid 48-move position without truncation", async () => {
+    const state = createSessionState(highMobilityPosition());
+    const executeTool = async (name: ToolName) => {
+      if (name !== "list_legal_moves") {
+        return {};
+      }
+      const moves = legalMoves(state.position, "black");
+      return compactLegalMoves(
+        state.position.sideToMove,
+        true,
+        tagMoves(state.position, moves),
+      );
+    };
+    render(
+      <WebMCPBridge
+        executeTool={executeTool}
+        onNativeSupport={() => undefined}
+        state={state}
+      />,
+    );
+    await waitFor(() => expect(modelContext.active.has("list_legal_moves")).toBe(true));
+
+    const result = await modelContext.tool("list_legal_moves").execute({});
+    const payload = toolPayload<{
+      total: number;
+      returned: number;
+      truncated: boolean;
+    }>(result);
+
+    expect(legalMoves(state.position, "black")).toHaveLength(48);
+    expect(payload).toEqual(
+      expect.objectContaining({ total: 48, returned: 48, truncated: false }),
+    );
+    expect(JSON.stringify(toolResponse(result)).length).toBeLessThanOrEqual(1_500);
+  });
+
+  it("keeps resignation and describe_board session outcomes consistent", async () => {
+    render(<Game />);
+    await waitFor(() => expect(modelContext.active.has("resign_game")).toBe(true));
+
+    const resignExecution = beginToolExecution(modelContext.tool("resign_game"), {});
+    const dialog = (await screen.findByRole("dialog")) as HTMLDialogElement;
+    await waitFor(() => expect(dialog).toHaveAttribute("open"));
+    dialog.returnValue = "confirm";
+    fireEvent(dialog, new Event("close"));
+
+    const resignResult = await resignExecution;
+    const resignation = toolPayload<{ board: string; winner: string }>(resignResult);
+    await waitFor(() =>
+      expect(currentSession().outcome).toEqual({
+        winner: "white",
+        reason: "resignation",
+      }),
+    );
+
+    const describeResult = await beginToolExecution(
+      modelContext.tool("describe_board"),
+      {},
+    );
+    const description = toolPayload<{
+      board: string;
+      snapshot: { winner: string | null };
+      outcome: { winner: string; reason: string } | null;
+    }>(describeResult);
+
+    expect(resignation.winner).toBe("white");
+    expect(resignation.board).toContain("Winner: White (resignation).");
+    expect(description.board).toContain("Winner: White (resignation).");
+    expect(description.snapshot.winner).toBe("white");
+    expect(description.outcome).toEqual({
+      winner: "white",
+      reason: "resignation",
+    });
+  });
+
+  it("unregisters threats at game end and rejects a stale threat call", async () => {
+    const { container } = render(<Game />);
+    await waitFor(() => expect(modelContext.names()).toEqual(INITIAL_WHITE_SURFACE));
+
+    const whiteMoves = ["a2-a3", "a3-a4", "a4-a5", "a5-a6", "a6-a7"];
+    const blackMoves = ["a7-b6", "h7-h6", "h6-h5", "h5-h4"];
+
+    for (let index = 0; index < whiteMoves.length; index += 1) {
+      const notation = whiteMoves[index]!;
+      const whiteMove = legalMoves(currentSession().position, "white").find(
+        (move) => move.notation === notation,
+      );
+      if (!whiteMove) throw new Error(`Missing test move ${notation}`);
+      await playWhiteWithMouse(container, whiteMove);
+
+      const blackMove = blackMoves[index];
+      if (blackMove) {
+        await playBlackWithTool(blackMove);
+      }
+    }
+
+    await waitFor(() => expect(modelContext.active.has("list_threats")).toBe(true));
+    const staleThreatTool = modelContext.tool("list_threats");
+
+    const resignExecution = beginToolExecution(modelContext.tool("resign_game"), {});
+    const dialog = (await screen.findByRole("dialog")) as HTMLDialogElement;
+    await waitFor(() => expect(dialog).toHaveAttribute("open"));
+    dialog.returnValue = "confirm";
+    fireEvent(dialog, new Event("close"));
+    await resignExecution;
+
+    await waitFor(() => expect(modelContext.active.has("list_threats")).toBe(false));
+    expect(
+      currentSession().registry.some((tool) => tool.name === "list_threats"),
+    ).toBe(false);
+
+    const staleResult = await beginToolExecution(staleThreatTool, {});
+    const staleResponse = toolResponse(staleResult);
+    expect(staleResponse.isError).toBe(true);
+    expect(staleResponse.content[0]?.text).toMatch(
+      /game is over; call start_new_game before listing threats/i,
+    );
   });
 
   it(

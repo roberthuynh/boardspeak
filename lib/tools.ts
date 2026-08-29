@@ -34,11 +34,28 @@ export interface ToolRegistryEntry extends ToolMeta {
 
 export type MoveTag = "advance" | "capture" | "winning";
 
+export const MAX_TOOL_OUTPUT_LENGTH = 1_500;
+
 export interface TaggedMove {
   readonly move: string;
   readonly from: string;
   readonly to: string;
   readonly tag: MoveTag;
+}
+
+export interface GroupedMoveNotations {
+  readonly advance: readonly string[];
+  readonly capture: readonly string[];
+  readonly winning: readonly string[];
+}
+
+export interface LegalMoveListOutput {
+  readonly turn: Side;
+  readonly canPlayNow: boolean;
+  readonly total: number;
+  readonly returned: number;
+  readonly truncated: boolean;
+  readonly moves: GroupedMoveNotations;
 }
 
 export const TOOL_META: Readonly<Record<ToolName, ToolMeta>> = {
@@ -61,7 +78,7 @@ export const TOOL_META: Readonly<Record<ToolName, ToolMeta>> = {
     mode: "READ",
     readOnlyHint: true,
     description:
-      "List Black's legal moves in the live position. Returns each notation with advance, capture, or winning intent and states whether Black can play now.",
+      "List Black's legal moves in the live position. Returns bare move notations grouped as advance, capture, or winning, plus totals, truncation status, and whether Black can play now.",
   },
   play_move: {
     name: "play_move",
@@ -202,7 +219,7 @@ export function buildToolRegistry(
     }
   }
 
-  if (positionThreats.length > 0) {
+  if (!gameOver && positionThreats.length > 0) {
     registry.push({
       ...TOOL_META.list_threats,
       detail: `${positionThreats.length} ${positionThreats.length === 1 ? "threat" : "threats"}`,
@@ -243,23 +260,92 @@ export function moveArg(value: unknown, allowed: readonly Move[], tool: ToolName
   const args = assertObjectArgs(value, tool);
   const move = typeof args.move === "string" ? args.move : "";
   const extraKeys = Object.keys(args).filter((key) => key !== "move");
+  const retry =
+    tool === "suggest_move"
+      ? "retry with only move set to one value from suggest_move's current move enum"
+      : "call list_legal_moves and retry with only move set to one listed value";
 
   if (extraKeys.length > 0) {
     throw new Error(
-      `${tool} received an unknown parameter (${extraKeys.join(", ")}); call list_legal_moves and retry with only move.`,
+      `${tool} received an unknown parameter (${extraKeys.join(", ")}); ${retry}.`,
     );
   }
 
   const match = allowed.find((candidate) => candidate.notation === move);
   if (!match) {
     throw new Error(
-      `${move || "That move"} is not legal now; call list_legal_moves and retry with one listed value.`,
+      `${move || "That move"} is not legal now; ${retry}.`,
     );
   }
 
   return match;
 }
 
+function normalizedToolOutput(value: unknown): unknown {
+  if (
+    value &&
+    typeof value === "object" &&
+    "content" in value &&
+    Array.isArray((value as { readonly content?: unknown }).content)
+  ) {
+    return value;
+  }
+
+  if (value === undefined || value === null) {
+    return { content: [] };
+  }
+
+  if (typeof value === "string") {
+    return { content: [{ type: "text", text: value }] };
+  }
+
+  return { content: [{ type: "text", text: JSON.stringify(value) }] };
+}
+
 export function toolOutputLength(value: unknown): number {
-  return JSON.stringify(value).length;
+  return JSON.stringify(normalizedToolOutput(value)).length;
+}
+
+export function compactLegalMoves(
+  turn: Side,
+  canPlayNow: boolean,
+  taggedMoves: readonly Pick<TaggedMove, "move" | "tag">[],
+  maxOutputLength = MAX_TOOL_OUTPUT_LENGTH,
+): LegalMoveListOutput {
+  const grouped: Record<MoveTag, string[]> = {
+    advance: [],
+    capture: [],
+    winning: [],
+  };
+  const total = taggedMoves.length;
+  let returned = 0;
+
+  const result = (): LegalMoveListOutput => ({
+    turn,
+    canPlayNow,
+    total,
+    returned,
+    truncated: returned < total,
+    moves: grouped,
+  });
+
+  for (const taggedMove of taggedMoves) {
+    grouped[taggedMove.tag].push(taggedMove.move);
+    returned += 1;
+
+    if (toolOutputLength(result()) > maxOutputLength) {
+      grouped[taggedMove.tag].pop();
+      returned -= 1;
+      break;
+    }
+  }
+
+  return result();
+}
+
+export function shouldExposeBoardspeakTestApi(
+  environment: string | undefined,
+  evalMode: boolean,
+): boolean {
+  return environment !== "production" || evalMode;
 }

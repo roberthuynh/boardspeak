@@ -61,12 +61,12 @@ Each tool uses the imperative `document.modelContext.registerTool` path through 
 
 | Tool | When it exists | Mode | Returns |
 |---|---|---:|---|
-| `describe_board` | Always | READ | Text and JSON board snapshot |
+| `describe_board` | Always | READ | Session-aware text, JSON snapshot, and outcome |
 | `get_rules` | Always | READ | Rules and notation |
-| `list_legal_moves` | Always | READ | Tagged Black moves |
+| `list_legal_moves` | Always | READ | Black notations grouped by intent, with totals and truncation status |
 | `play_move` | Black to move | ACT | Move result and updated board |
 | `play_capture` | Black can capture | ACT | Capture result and updated board |
-| `list_threats` | A pawn is one step from winning | READ | Threatening pieces by side |
+| `list_threats` | A live game has a pawn one step from winning | READ | Threatening pieces by side |
 | `suggest_move` | White to move | ACT | A visible, non-binding move suggestion |
 | `resign_game` | A game is live | ACT | Confirmed resignation or cancellation |
 | `start_new_game` | Always | ACT | Reset result or cancellation |

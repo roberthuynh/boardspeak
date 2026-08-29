@@ -20,8 +20,6 @@ import { chooseWhiteMove } from "@/lib/bot";
 import {
   legalMoves,
   threats,
-  toJSON,
-  toText,
   winner,
   type Move,
   type Square,
@@ -31,6 +29,7 @@ import {
   createSessionState,
   gameReducer,
   selectedMoves,
+  sessionBoardPayload,
   type GameAction,
   type GameOutcome,
   type SessionState,
@@ -38,17 +37,23 @@ import {
 } from "@/lib/game";
 import { createNarrator } from "@/lib/narration";
 import {
+  MAX_TOOL_OUTPUT_LENGTH,
   NOTATION,
   RULES,
   assertObjectArgs,
+  compactLegalMoves,
   moveArg,
+  shouldExposeBoardspeakTestApi,
   tagMoves,
   toolOutputLength,
   type ToolName,
 } from "@/lib/tools";
 
 const EVAL_MODE = process.env.NEXT_PUBLIC_EVAL_MODE === "1";
-const MAX_TOOL_OUTPUT_LENGTH = 1_500;
+const EXPOSE_TEST_API = shouldExposeBoardspeakTestApi(
+  process.env.NODE_ENV,
+  EVAL_MODE,
+);
 
 interface CommitWaiter {
   readonly revision: number;
@@ -194,10 +199,7 @@ function GameInner() {
       switch (name) {
         case "describe_board":
           requireNoArgs(rawArgs, name);
-          return {
-            board: toText(current.position),
-            snapshot: toJSON(current.position),
-          };
+          return sessionBoardPayload(current);
 
         case "get_rules":
           requireNoArgs(rawArgs, name);
@@ -206,14 +208,11 @@ function GameInner() {
         case "list_legal_moves": {
           requireNoArgs(rawArgs, name);
           const moves = gameOver ? [] : legalMoves(current.position, "black");
-          return {
-            turn: current.position.sideToMove,
-            canPlayNow: !gameOver && current.position.sideToMove === "black",
-            moves: tagMoves(current.position, moves).map(({ move, tag }) => ({
-              move,
-              tag,
-            })),
-          };
+          return compactLegalMoves(
+            current.position.sideToMove,
+            !gameOver && current.position.sideToMove === "black",
+            tagMoves(current.position, moves),
+          );
         }
 
         case "play_move": {
@@ -241,7 +240,7 @@ function GameInner() {
             capture: move.capture,
             winner: updated.outcome?.winner ?? null,
             whiteReplies,
-            board: toText(updated.position),
+            board: sessionBoardPayload(updated).board,
           };
         }
 
@@ -272,12 +271,17 @@ function GameInner() {
             capture: true,
             winner: updated.outcome?.winner ?? null,
             whiteReplies,
-            board: toText(updated.position),
+            board: sessionBoardPayload(updated).board,
           };
         }
 
         case "list_threats": {
           requireNoArgs(rawArgs, name);
+          if (gameOver) {
+            throw new Error(
+              "The game is over; call start_new_game before listing threats.",
+            );
+          }
           const currentThreats = threats(current.position);
           if (currentThreats.length === 0) {
             throw new Error(
@@ -309,7 +313,7 @@ function GameInner() {
             suggested: move.notation,
             moved: false,
             awaitingPlayer: `Click ${move.to} to accept the ghost arrow.`,
-            board: toText(updated.position),
+            board: sessionBoardPayload(updated).board,
           };
         }
 
@@ -328,7 +332,7 @@ function GameInner() {
           return {
             resigned: true,
             winner: updated.outcome?.winner ?? "white",
-            board: toText(updated.position),
+            board: sessionBoardPayload(updated).board,
           };
         }
 
@@ -346,7 +350,7 @@ function GameInner() {
             type: "newGame",
             position: EVAL_MODE ? createEvalPosition() : undefined,
           });
-          return { started: true, board: toText(updated.position) };
+          return { started: true, board: sessionBoardPayload(updated).board };
         }
       }
     },
@@ -379,6 +383,11 @@ function GameInner() {
   );
 
   useEffect(() => {
+    if (!EXPOSE_TEST_API) {
+      delete window.__boardspeak;
+      return;
+    }
+
     window.__boardspeak = {
       getState: () => stateRef.current,
       executeTool: (name, args) => {
