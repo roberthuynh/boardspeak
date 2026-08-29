@@ -158,10 +158,15 @@ export function Board({
               const piece = piecesBySquare.get(square);
               const isLegalTarget = legalTargetSet.has(square);
               const isSelected = selected === square;
+              const legalDescription = isLegalTarget
+                ? piece
+                  ? ", legal capture"
+                  : ", legal destination"
+                : "";
 
               return (
                 <button
-                  aria-label={`${square}, ${piece ? `${piece.side} pawn` : "empty"}`}
+                  aria-label={`${square}, ${piece ? `${piece.side} pawn` : "empty"}${legalDescription}`}
                   aria-disabled={disabled || undefined}
                   aria-pressed={isSelected}
                   className="board-square"

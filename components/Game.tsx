@@ -511,14 +511,14 @@ function GameInner() {
         return;
       }
 
-      if (state.suggestion?.to === square) {
-        playMouseMove(state.suggestion);
-        return;
-      }
-
       const matchingMove = movesFromSelection.find((move) => move.to === square);
       if (matchingMove) {
         playMouseMove(matchingMove);
+        return;
+      }
+
+      if (state.suggestion?.to === square) {
+        playMouseMove(state.suggestion);
         return;
       }
 

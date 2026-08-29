@@ -28,10 +28,14 @@ async function openPlainBrowserGame(page: Page, path = "/") {
   await expect(page.locator(".board-square")).toHaveCount(64);
 }
 
-async function playMouseMove(page: Page, fromName: string, toName: string) {
-  await page.getByRole("button", { name: fromName, exact: true }).click();
-  const destination = page.getByRole("button", { name: toName, exact: true });
+async function playMouseMove(page: Page, fromSquare: string, toSquare: string) {
+  await page.locator(`.board-square[data-square="${fromSquare}"]`).click();
+  const destination = page.locator(`.board-square[data-square="${toSquare}"]`);
   await expect(destination).toHaveAttribute("data-legal-target", "true");
+  await expect(destination).toHaveAttribute(
+    "aria-label",
+    new RegExp(`^${toSquare}, .+, legal (?:destination|capture)$`),
+  );
   await destination.click();
 }
 
@@ -42,12 +46,12 @@ test("mouse play passes the turn and changes the agent rail", async ({ page }) =
   await expect(rail.locator('[data-tool-name="suggest_move"]')).toBeVisible();
   await expect(rail.locator('[data-tool-name="play_move"]')).toHaveCount(0);
 
-  await playMouseMove(page, "e2, white pawn", "e3, empty");
+  await playMouseMove(page, "e2", "e3");
   await expect(page.getByRole("heading", { name: "Black to move" })).toBeVisible();
   await expect(rail.locator('[data-tool-name="play_move"]')).toContainText("22 legal");
   await expect(rail.locator('[data-tool-name="suggest_move"]')).toHaveCount(0);
 
-  await playMouseMove(page, "e7, black pawn", "e6, empty");
+  await playMouseMove(page, "e7", "e6");
   await expect(page.getByRole("heading", { name: "White to move" })).toBeVisible();
   await expect(rail.locator('[data-tool-name="play_move"]')).toHaveCount(0);
   await expect(rail.locator('[data-tool-name="suggest_move"]')).toBeVisible();
@@ -59,7 +63,7 @@ test("demo mode sends Black through the traced tool execution path", async ({ pa
 
   const demo = page.getByRole("button", { name: "Demo: agent turn" });
   await expect(demo).toBeDisabled();
-  await playMouseMove(page, "e2, white pawn", "e3, empty");
+  await playMouseMove(page, "e2", "e3");
   await expect(demo).toBeEnabled();
   await expect(page.locator('[data-tool-name="play_move"]')).toBeVisible();
 
@@ -112,12 +116,41 @@ test("practice mode gives Black a visible White bot reply", async ({ page }) => 
   await expect(page.locator(".move-entry")).toHaveCount(1);
   await expect(page.locator(".move-entry").first()).toContainText("White a2 moves to a3");
 
-  await playMouseMove(page, "a7, black pawn", "a6, empty");
+  await playMouseMove(page, "a7", "a6");
 
   await expect(page.locator(".move-entry")).toHaveCount(3);
   await expect(page.getByRole("heading", { name: "Black to move" })).toBeVisible();
   await expect(page.locator(".move-entry").first()).toContainText("White a3 moves to a4");
   await expect(page.locator('[data-tool-name="play_move"]')).toBeVisible();
+});
+
+test("board focus and selection feedback are visible and announced", async ({ page }) => {
+  await openPlainBrowserGame(page);
+
+  const pawn = page.locator('.board-square[data-square="e2"]');
+  await pawn.focus();
+  const focusStyle = await pawn.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      color: style.outlineColor,
+      offset: style.outlineOffset,
+      width: style.outlineWidth,
+    };
+  });
+  expect(focusStyle).toEqual({
+    color: "rgb(27, 18, 6)",
+    offset: "-5px",
+    width: "4px",
+  });
+
+  await pawn.click();
+  await expect(page.getByRole("status")).toContainText(
+    "White pawn e2 selected. Legal destinations: d3, e3, f3.",
+  );
+  await expect(page.locator('.board-square[data-square="e3"]')).toHaveAttribute(
+    "aria-label",
+    "e3, empty, legal destination",
+  );
 });
 
 test("360px layout keeps the fully named board inside the viewport", async ({ page }) => {

@@ -129,7 +129,9 @@ describe("practice and coaching", () => {
     expect(arrow).toHaveAttribute("data-from", "e2");
     expect(arrow).toHaveAttribute("data-to", "e3");
 
-    fireEvent.click(screen.getByRole("button", { name: "e3, empty" }));
+    fireEvent.click(
+      container.querySelector<HTMLButtonElement>('button[data-square="e3"]')!,
+    );
 
     await waitFor(() =>
       expect(currentSession().position.lastMove?.notation).toBe("e2-e3"),
@@ -139,5 +141,36 @@ describe("practice and coaching", () => {
     expect(currentSession().suggestion).toBeNull();
     expect(container.querySelector(".suggestion-arrow")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Black to move" })).toBeVisible();
+  });
+
+  it("prefers the player's selected move over a suggestion with the same target", async () => {
+    const { container } = render(<Game />);
+    await waitFor(() => expect(window.__boardspeak).toBeDefined());
+
+    let suggestionExecution: Promise<unknown> | undefined;
+    act(() => {
+      suggestionExecution = window.__boardspeak?.executeTool("suggest_move", {
+        move: "e2-d3",
+      });
+    });
+    await waitFor(() =>
+      expect(currentSession().suggestion?.notation).toBe("e2-d3"),
+    );
+    await suggestionExecution;
+
+    fireEvent.click(
+      container.querySelector<HTMLButtonElement>('button[data-square="c2"]')!,
+    );
+    expect(currentSession().selected).toBe("c2");
+
+    fireEvent.click(
+      container.querySelector<HTMLButtonElement>('button[data-square="d3"]')!,
+    );
+    await waitFor(() =>
+      expect(currentSession().position.lastMove?.notation).toBe("c2-d3"),
+    );
+    expect(currentSession().position.pieces.some((piece) => piece.square === "e2")).toBe(
+      true,
+    );
   });
 });

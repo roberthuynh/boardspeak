@@ -38,6 +38,20 @@ describe("game session reducer", () => {
       "e2-e3",
       "e2-f3",
     ]);
+    expect(selected.announcement).toBe(
+      "White pawn e2 selected. Legal destinations: d3, e3, f3.",
+    );
+
+    const blocked = gameReducer(createSessionState(), {
+      type: "select",
+      square: "a1",
+    });
+    expect(blocked.announcement).toBe(
+      "White pawn a1 selected. No legal destinations.",
+    );
+
+    const cleared = gameReducer(selected, { type: "select", square: null });
+    expect(cleared.announcement).toBe("Selection cleared.");
   });
 
   it("plays both colors by the same reducer path and records plain language", () => {

@@ -181,13 +181,41 @@ function nextRevision(state: SessionState): number {
 
 export function gameReducer(state: SessionState, action: GameAction): SessionState {
   switch (action.type) {
-    case "select":
+    case "select": {
+      if (!action.square) {
+        return {
+          ...state,
+          selected: null,
+          suggestion: null,
+          announcement: "Selection cleared.",
+          revision: nextRevision(state),
+        };
+      }
+
+      const piece = state.position.pieces.find(
+        (candidate) => candidate.square === action.square,
+      );
+      const destinations = (state.outcome
+        ? []
+        : legalMoves(state.position, state.position.sideToMove)
+            .filter((move) => move.from === action.square)
+            .map((move) => move.to)
+            .sort((left, right) => left.localeCompare(right)));
+      const selectedLabel = piece
+        ? `${piece.side === "white" ? "White" : "Black"} pawn ${action.square}`
+        : `Square ${action.square}`;
+      const announcement =
+        destinations.length > 0
+          ? `${selectedLabel} selected. Legal destinations: ${destinations.join(", ")}.`
+          : `${selectedLabel} selected. No legal destinations.`;
+
       return {
         ...state,
         selected: action.square,
-        suggestion: action.square ? state.suggestion : null,
+        announcement,
         revision: nextRevision(state),
       };
+    }
 
     case "move": {
       if (state.outcome) {

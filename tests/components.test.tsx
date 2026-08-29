@@ -16,6 +16,16 @@ import { MoveLog } from "@/components/MoveLog";
 import { initialState } from "@/lib/breakthrough";
 import { NOTATION, RULES } from "@/lib/tools";
 
+function boardButton(container: HTMLElement, square: string): HTMLButtonElement {
+  const button = container.querySelector<HTMLButtonElement>(
+    `button[data-square="${square}"]`,
+  );
+  if (!button) {
+    throw new Error(`Board button ${square} was not rendered.`);
+  }
+  return button;
+}
+
 describe("accessible board experience", () => {
   afterEach(() => cleanup());
 
@@ -65,19 +75,46 @@ describe("accessible board experience", () => {
     expect(onSquareClick).not.toHaveBeenCalled();
   });
 
-  it("plays White and Black by clicking the same board", async () => {
-    render(<Game />);
+  it("names empty legal destinations and occupied legal captures", () => {
+    const state = initialState();
+    const captureState = {
+      ...state,
+      pieces: state.pieces.map((piece) =>
+        piece.square === "d7" ? { ...piece, square: "d3" as const } : piece,
+      ),
+    };
 
-    fireEvent.click(screen.getByRole("button", { name: "e2, white pawn" }));
-    fireEvent.click(screen.getByRole("button", { name: "e3, empty" }));
+    render(
+      <Board
+        legalTargets={["d3", "e3"]}
+        onSquareClick={() => undefined}
+        selected="e2"
+        state={captureState}
+        suggestion={null}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "e3, empty, legal destination" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "d3, black pawn, legal capture" }),
+    ).toBeVisible();
+  });
+
+  it("plays White and Black by clicking the same board", async () => {
+    const { container } = render(<Game />);
+
+    fireEvent.click(boardButton(container, "e2"));
+    fireEvent.click(boardButton(container, "e3"));
     await waitFor(() =>
       expect(
         screen.getByRole("heading", { name: "Black to move" }),
       ).toBeVisible(),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "e7, black pawn" }));
-    fireEvent.click(screen.getByRole("button", { name: "e6, empty" }));
+    fireEvent.click(boardButton(container, "e7"));
+    fireEvent.click(boardButton(container, "e6"));
     await waitFor(() =>
       expect(
         screen.getByRole("heading", { name: "White to move" }),
@@ -95,6 +132,19 @@ describe("accessible board experience", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Narrate moves" }));
     await waitFor(() => expect(status).toHaveTextContent("Move narration off."));
+  });
+
+  it("announces selection destinations and clearing through the status region", () => {
+    const { container } = render(<Game />);
+    const status = screen.getByRole("status");
+
+    fireEvent.click(boardButton(container, "e2"));
+    expect(status).toHaveTextContent(
+      "White pawn e2 selected. Legal destinations: d3, e3, f3.",
+    );
+
+    fireEvent.click(boardButton(container, "e2"));
+    expect(status).toHaveTextContent("Selection cleared.");
   });
 
   it("keeps move and win announcements in one polite live region", () => {
