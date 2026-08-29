@@ -92,7 +92,7 @@ return () => {
 |---|---|---:|---|
 | `describe_board` | Always | READ | Session-aware text, JSON snapshot, and outcome |
 | `get_rules` | Always | READ | Rules and notation |
-| `list_legal_moves` | Always | READ | Black notations grouped by intent, with totals and truncation status |
+| `list_legal_moves` | Always | READ | Black notations grouped by intent, with totals, truncation status, game-over state, and winner |
 | `play_move` | Black to move | ACT | Move result and updated board |
 | `play_capture` | Black can capture | ACT | Capture result and updated board |
 | `list_threats` | A live game has a pawn one step from winning | READ | Threatening pieces by side |

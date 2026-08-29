@@ -13,7 +13,6 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { Game } from "@/components/Game";
-import { WebMCPBridge } from "@/components/WebMCPBridge";
 import {
   applyMove,
   legalMoves,
@@ -22,12 +21,7 @@ import {
   type Move,
   type Square,
 } from "@/lib/breakthrough";
-import { createSessionState, type SessionState } from "@/lib/game";
-import {
-  compactLegalMoves,
-  tagMoves,
-  type ToolName,
-} from "@/lib/tools";
+import type { SessionState } from "@/lib/game";
 
 const INITIAL_WHITE_SURFACE = [
   "describe_board",
@@ -296,6 +290,8 @@ describe("the live WebMCP tool surface", () => {
     );
     const response = toolResponse(result);
     const payload = toolPayload<{
+      gameOver: boolean;
+      winner: string | null;
       total: number;
       returned: number;
       truncated: boolean;
@@ -305,44 +301,79 @@ describe("the live WebMCP tool surface", () => {
     expect(response.content).toHaveLength(1);
     expect(response.content[0]?.type).toBe("text");
     expect(JSON.stringify(response).length).toBeLessThanOrEqual(1_500);
-    expect(payload).toMatchObject({ total: 22, returned: 22, truncated: false });
+    expect(payload).toMatchObject({
+      gameOver: false,
+      winner: null,
+      total: 22,
+      returned: 22,
+      truncated: false,
+    });
     expect(Object.values(payload.moves).flat()).toHaveLength(22);
   });
 
   it("normalizes a valid 48-move position without truncation", async () => {
-    const state = createSessionState(highMobilityPosition());
-    const executeTool = async (name: ToolName) => {
-      if (name !== "list_legal_moves") {
-        return {};
-      }
-      const moves = legalMoves(state.position, "black");
-      return compactLegalMoves(
-        state.position.sideToMove,
-        true,
-        tagMoves(state.position, moves),
-      );
-    };
-    render(
-      <WebMCPBridge
-        executeTool={executeTool}
-        onNativeSupport={() => undefined}
-        state={state}
-      />,
-    );
+    const position = highMobilityPosition();
+    render(<Game initialPosition={position} />);
     await waitFor(() => expect(modelContext.active.has("list_legal_moves")).toBe(true));
 
-    const result = await modelContext.tool("list_legal_moves").execute({});
+    const result = await beginToolExecution(
+      modelContext.tool("list_legal_moves"),
+      {},
+    );
     const payload = toolPayload<{
+      gameOver: boolean;
+      winner: string | null;
       total: number;
       returned: number;
       truncated: boolean;
+      moves: Record<string, string[]>;
     }>(result);
 
-    expect(legalMoves(state.position, "black")).toHaveLength(48);
+    expect(legalMoves(position, "black")).toHaveLength(48);
     expect(payload).toEqual(
-      expect.objectContaining({ total: 48, returned: 48, truncated: false }),
+      expect.objectContaining({
+        gameOver: false,
+        winner: null,
+        total: 48,
+        returned: 48,
+        truncated: false,
+      }),
     );
+    expect(Object.values(payload.moves).flat()).toHaveLength(48);
     expect(JSON.stringify(toolResponse(result)).length).toBeLessThanOrEqual(1_500);
+    await waitFor(() => expect(currentSession().trace).toHaveLength(1));
+    expect(currentSession().trace[0]).toMatchObject({
+      name: "list_legal_moves",
+      isError: false,
+    });
+    expect(modelContext.duplicateErrors).toEqual([]);
+  });
+
+  it("rejects an oversized play result before mutating the board", async () => {
+    const position = highMobilityPosition();
+    render(<Game initialPosition={position} toolOutputLimit={120} />);
+    await waitFor(() => expect(modelContext.active.has("play_move")).toBe(true));
+    const move = moveEnum(modelContext.tool("play_move"))[0];
+    if (!move) throw new Error("Missing high-mobility fixture move.");
+
+    const result = await beginToolExecution(
+      modelContext.tool("play_move"),
+      { move },
+    );
+
+    expect(toolResponse(result).isError).toBe(true);
+    expect(toolResponse(result).content[0]?.text).toMatch(
+      /play_move could not return a compact result/i,
+    );
+    await waitFor(() => expect(currentSession().trace).toHaveLength(1));
+    expect(currentSession().position.sideToMove).toBe("black");
+    expect(currentSession().position.lastMove).toBeNull();
+    expect(currentSession().history).toHaveLength(0);
+    expect(currentSession().trace[0]).toMatchObject({
+      name: "play_move",
+      isError: true,
+    });
+    expect(modelContext.active.has("play_move")).toBe(true);
   });
 
   it("keeps resignation and describe_board session outcomes consistent", async () => {
@@ -373,6 +404,17 @@ describe("the live WebMCP tool surface", () => {
       snapshot: { winner: string | null };
       outcome: { winner: string; reason: string } | null;
     }>(describeResult);
+    const legalMoveResult = await beginToolExecution(
+      modelContext.tool("list_legal_moves"),
+      {},
+    );
+    const moveList = toolPayload<{
+      gameOver: boolean;
+      winner: string | null;
+      total: number;
+      returned: number;
+      moves: Record<string, string[]>;
+    }>(legalMoveResult);
 
     expect(resignation.winner).toBe("white");
     expect(resignation.board).toContain("Winner: White (resignation).");
@@ -382,6 +424,13 @@ describe("the live WebMCP tool surface", () => {
       winner: "white",
       reason: "resignation",
     });
+    expect(moveList).toMatchObject({
+      gameOver: true,
+      winner: "white",
+      total: 0,
+      returned: 0,
+    });
+    expect(Object.values(moveList.moves).flat()).toEqual([]);
   });
 
   it("unregisters threats at game end and rejects a stale threat call", async () => {

@@ -49,9 +49,14 @@ export interface GroupedMoveNotations {
   readonly winning: readonly string[];
 }
 
-export interface LegalMoveListOutput {
+export interface LegalMoveStatus {
   readonly turn: Side;
   readonly canPlayNow: boolean;
+  readonly gameOver: boolean;
+  readonly winner: Side | null;
+}
+
+export interface LegalMoveListOutput extends LegalMoveStatus {
   readonly total: number;
   readonly returned: number;
   readonly truncated: boolean;
@@ -78,7 +83,7 @@ export const TOOL_META: Readonly<Record<ToolName, ToolMeta>> = {
     mode: "READ",
     readOnlyHint: true,
     description:
-      "List Black's legal moves in the live position. Returns bare move notations grouped as advance, capture, or winning, plus totals, truncation status, and whether Black can play now.",
+      "List Black's legal moves and current game status. Returns bare move notations grouped as advance, capture, or winning, plus totals, truncation status, whether Black can play now, and the winner when the game is over.",
   },
   play_move: {
     name: "play_move",
@@ -306,9 +311,20 @@ export function toolOutputLength(value: unknown): number {
   return JSON.stringify(normalizedToolOutput(value)).length;
 }
 
+export function assertToolOutput(
+  name: ToolName,
+  result: unknown,
+  maxOutputLength = MAX_TOOL_OUTPUT_LENGTH,
+): void {
+  if (toolOutputLength(result) > maxOutputLength) {
+    throw new Error(
+      `${name} could not return a compact result; retry after the board changes.`,
+    );
+  }
+}
+
 export function compactLegalMoves(
-  turn: Side,
-  canPlayNow: boolean,
+  status: LegalMoveStatus,
   taggedMoves: readonly Pick<TaggedMove, "move" | "tag">[],
   maxOutputLength = MAX_TOOL_OUTPUT_LENGTH,
 ): LegalMoveListOutput {
@@ -321,8 +337,7 @@ export function compactLegalMoves(
   let returned = 0;
 
   const result = (): LegalMoveListOutput => ({
-    turn,
-    canPlayNow,
+    ...status,
     total,
     returned,
     truncated: returned < total,

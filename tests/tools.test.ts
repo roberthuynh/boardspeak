@@ -11,6 +11,7 @@ import {
   EMPTY_INPUT_SCHEMA,
   MAX_TOOL_OUTPUT_LENGTH,
   TOOL_META,
+  assertToolOutput,
   buildToolRegistry,
   compactLegalMoves,
   moveArg,
@@ -118,13 +119,19 @@ describe("WebMCP tool contracts", () => {
     const state = highMobilityPosition();
     const legal = legalMoves(state, "black");
     const moveList = compactLegalMoves(
-      state.sideToMove,
-      true,
+      {
+        turn: state.sideToMove,
+        canPlayNow: true,
+        gameOver: false,
+        winner: null,
+      },
       tagMoves(state, legal),
     );
 
     expect(legal).toHaveLength(48);
     expect(moveList).toMatchObject({
+      gameOver: false,
+      winner: null,
       total: 48,
       returned: 48,
       truncated: false,
@@ -141,8 +148,14 @@ describe("WebMCP tool contracts", () => {
       move: `long-move-notation-${index.toString().padStart(2, "0")}`,
       tag: index % 2 === 0 ? ("advance" as const) : ("capture" as const),
     }));
-    const first = compactLegalMoves("black", true, moves, 420);
-    const second = compactLegalMoves("black", true, moves, 420);
+    const status = {
+      turn: "black" as const,
+      canPlayNow: true,
+      gameOver: false,
+      winner: null,
+    };
+    const first = compactLegalMoves(status, moves, 420);
+    const second = compactLegalMoves(status, moves, 420);
 
     expect(first).toEqual(second);
     expect(first.returned).toBeGreaterThan(0);
@@ -160,6 +173,28 @@ describe("WebMCP tool contracts", () => {
     expect(() => moveArg({ move: "z9-z8" }, allowed, "play_move")).toThrow(
       /call list_legal_moves/i,
     );
+  });
+
+  it("rejects unknown move parameters with tool-specific recovery text", () => {
+    const allowed = legalMoves(initialState(), "white");
+    const move = allowed[0]?.notation;
+
+    expect(() =>
+      moveArg({ move, explanation: "please" }, allowed, "suggest_move"),
+    ).toThrow(/unknown parameter \(explanation\).*suggest_move's current move enum/i);
+    expect(() =>
+      moveArg({ move, explanation: "please" }, allowed, "play_move"),
+    ).toThrow(/unknown parameter \(explanation\).*call list_legal_moves/i);
+  });
+
+  it("throws when a normalized tool result exceeds its output limit", () => {
+    expect(() =>
+      assertToolOutput(
+        "describe_board",
+        { board: "x".repeat(300) },
+        120,
+      ),
+    ).toThrow(/describe_board could not return a compact result/i);
   });
 
   it("removes threats from the intended registry after a session outcome", () => {

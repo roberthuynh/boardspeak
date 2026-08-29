@@ -21,6 +21,7 @@ import {
   legalMoves,
   threats,
   winner,
+  type GameState,
   type Move,
   type Square,
 } from "@/lib/breakthrough";
@@ -41,11 +42,11 @@ import {
   NOTATION,
   RULES,
   assertObjectArgs,
+  assertToolOutput,
   compactLegalMoves,
   moveArg,
   shouldExposeBoardspeakTestApi,
   tagMoves,
-  toolOutputLength,
   type ToolName,
 } from "@/lib/tools";
 
@@ -58,6 +59,11 @@ const EXPOSE_TEST_API = shouldExposeBoardspeakTestApi(
 interface CommitWaiter {
   readonly revision: number;
   readonly resolve: (state: SessionState) => void;
+}
+
+export interface GameProps {
+  readonly initialPosition?: GameState;
+  readonly toolOutputLimit?: number;
 }
 
 function winnerText(outcome: GameOutcome | null): string | null {
@@ -109,18 +115,18 @@ function requireNoArgs(value: unknown, tool: ToolName): void {
   }
 }
 
-function assertToolOutput(name: ToolName, result: unknown): void {
-  if (toolOutputLength(result) > MAX_TOOL_OUTPUT_LENGTH) {
-    throw new Error(`${name} could not return a compact result; retry after the board changes.`);
-  }
-}
-
-function GameInner() {
+function GameInner({
+  initialPosition,
+  toolOutputLimit = MAX_TOOL_OUTPUT_LENGTH,
+}: GameProps) {
   const confirm = useConfirm();
   const [state, dispatch] = useReducer(
     gameReducer,
     undefined,
-    () => createSessionState(EVAL_MODE ? createEvalPosition() : undefined),
+    () =>
+      createSessionState(
+        EVAL_MODE ? createEvalPosition() : initialPosition,
+      ),
   );
   const stateRef = useRef(state);
   const waitersRef = useRef<CommitWaiter[]>([]);
@@ -191,27 +197,45 @@ function GameInner() {
     [dispatchAndCommit],
   );
 
+  const checkedResult = useCallback(
+    <Result,>(name: ToolName, result: Result): Result => {
+      assertToolOutput(name, result, toolOutputLimit);
+      return result;
+    },
+    [toolOutputLimit],
+  );
+
   const executeToolCore = useCallback(
     async (name: ToolName, rawArgs: unknown, signal?: AbortSignal) => {
       const current = stateRef.current;
-      const gameOver = Boolean(current.outcome ?? winner(current.position));
+      const effectiveWinner = current.outcome?.winner ?? winner(current.position);
+      const gameOver = effectiveWinner !== null;
 
       switch (name) {
         case "describe_board":
           requireNoArgs(rawArgs, name);
-          return sessionBoardPayload(current);
+          return checkedResult(name, sessionBoardPayload(current));
 
         case "get_rules":
           requireNoArgs(rawArgs, name);
-          return { rules: RULES, notation: NOTATION };
+          return checkedResult(name, { rules: RULES, notation: NOTATION });
 
         case "list_legal_moves": {
           requireNoArgs(rawArgs, name);
           const moves = gameOver ? [] : legalMoves(current.position, "black");
-          return compactLegalMoves(
-            current.position.sideToMove,
-            !gameOver && current.position.sideToMove === "black",
-            tagMoves(current.position, moves),
+          return checkedResult(
+            name,
+            compactLegalMoves(
+              {
+                turn: current.position.sideToMove,
+                canPlayNow:
+                  !gameOver && current.position.sideToMove === "black",
+                gameOver,
+                winner: effectiveWinner,
+              },
+              tagMoves(current.position, moves),
+              toolOutputLimit,
+            ),
           );
         }
 
@@ -227,21 +251,24 @@ function GameInner() {
 
           const allowed = legalMoves(current.position, "black");
           const move = moveArg(rawArgs, allowed, name);
-          const updated = await dispatchAndCommit({
+          const action: GameAction = {
             type: "move",
             move,
             source: "agent",
-          });
-          const whiteReplies = updated.outcome
+          };
+          const preview = gameReducer(current, action);
+          const whiteReplies = preview.outcome
             ? []
-            : legalMoves(updated.position, "white").map((reply) => reply.notation);
-          return {
+            : legalMoves(preview.position, "white").map((reply) => reply.notation);
+          const result = checkedResult(name, {
             played: move.notation,
             capture: move.capture,
-            winner: updated.outcome?.winner ?? null,
+            winner: preview.outcome?.winner ?? null,
             whiteReplies,
-            board: sessionBoardPayload(updated).board,
-          };
+            board: sessionBoardPayload(preview).board,
+          });
+          await dispatchAndCommit(action);
+          return result;
         }
 
         case "play_capture": {
@@ -258,21 +285,24 @@ function GameInner() {
             (move) => move.capture,
           );
           const move = moveArg(rawArgs, captures, name);
-          const updated = await dispatchAndCommit({
+          const action: GameAction = {
             type: "move",
             move,
             source: "agent",
-          });
-          const whiteReplies = updated.outcome
+          };
+          const preview = gameReducer(current, action);
+          const whiteReplies = preview.outcome
             ? []
-            : legalMoves(updated.position, "white").map((reply) => reply.notation);
-          return {
+            : legalMoves(preview.position, "white").map((reply) => reply.notation);
+          const result = checkedResult(name, {
             played: move.notation,
             capture: true,
-            winner: updated.outcome?.winner ?? null,
+            winner: preview.outcome?.winner ?? null,
             whiteReplies,
-            board: sessionBoardPayload(updated).board,
-          };
+            board: sessionBoardPayload(preview).board,
+          });
+          await dispatchAndCommit(action);
+          return result;
         }
 
         case "list_threats": {
@@ -288,13 +318,13 @@ function GameInner() {
               "There are no immediate rank threats now; call describe_board to inspect the position.",
             );
           }
-          return {
+          return checkedResult(name, {
             threats: currentThreats.map((threat) => ({
               side: threat.side,
               square: threat.square,
               goalRank: threat.goalRank,
             })),
-          };
+          });
         }
 
         case "suggest_move": {
@@ -309,12 +339,12 @@ function GameInner() {
             name,
           );
           const updated = await dispatchAndCommit({ type: "setSuggestion", move });
-          return {
+          return checkedResult(name, {
             suggested: move.notation,
             moved: false,
             awaitingPlayer: `Click ${move.to} to accept the ghost arrow.`,
             board: sessionBoardPayload(updated).board,
-          };
+          });
         }
 
         case "resign_game": {
@@ -326,14 +356,17 @@ function GameInner() {
             ? true
             : await confirm("Resign the game for Black?", signal);
           if (!accepted) {
-            return { resigned: false, reason: "cancelled by player" };
+            return checkedResult(name, {
+              resigned: false,
+              reason: "cancelled by player",
+            });
           }
           const updated = await dispatchAndCommit({ type: "resign", side: "black" });
-          return {
+          return checkedResult(name, {
             resigned: true,
             winner: updated.outcome?.winner ?? "white",
             board: sessionBoardPayload(updated).board,
-          };
+          });
         }
 
         case "start_new_game": {
@@ -344,17 +377,23 @@ function GameInner() {
               ? true
               : await confirm("Start a new game and clear the current board?", signal);
           if (!accepted) {
-            return { started: false, reason: "cancelled by player" };
+            return checkedResult(name, {
+              started: false,
+              reason: "cancelled by player",
+            });
           }
           const updated = await dispatchAndCommit({
             type: "newGame",
             position: EVAL_MODE ? createEvalPosition() : undefined,
           });
-          return { started: true, board: sessionBoardPayload(updated).board };
+          return checkedResult(name, {
+            started: true,
+            board: sessionBoardPayload(updated).board,
+          });
         }
       }
     },
-    [confirm, dispatchAndCommit],
+    [checkedResult, confirm, dispatchAndCommit, toolOutputLimit],
   );
 
   const executeTool = useCallback<ToolExecutor>(
@@ -362,7 +401,6 @@ function GameInner() {
       const call = async () => {
         try {
           const result = await executeToolCore(name, args, signal);
-          assertToolOutput(name, result);
           await appendTrace(name, args, result, false);
           return result;
         } catch (error) {
@@ -742,10 +780,10 @@ function GameInner() {
   );
 }
 
-export function Game() {
+export function Game(props: GameProps = {}) {
   return (
     <ConfirmProvider>
-      <GameInner />
+      <GameInner {...props} />
     </ConfirmProvider>
   );
 }
