@@ -9,16 +9,22 @@ const nunito = localFont({
   weight: "200 1000",
 });
 
-const siteUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
-  ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-  : "http://localhost:3000";
+const canonicalUrl = "https://boardspeak.vercel.app";
+const siteUrl =
+  process.env.NODE_ENV === "production"
+    ? canonicalUrl
+    : "http://localhost:3000";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
+  alternates: {
+    canonical: canonicalUrl,
+  },
   title: "Boardspeak | Play it by hand. Play it by voice.",
   description:
     "A shared visual board where White plays by mouse and Black plays through a conversational agent using WebMCP.",
   openGraph: {
+    url: canonicalUrl,
     title: "Boardspeak | Play it by hand. Play it by voice.",
     description:
       "A shared visual board where White plays by mouse and Black plays through a conversational agent using WebMCP.",

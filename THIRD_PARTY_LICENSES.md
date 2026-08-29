@@ -24,12 +24,14 @@ This file lists third-party artifacts distributed with or bundled into Boardspea
 - Artifacts: `.agents/skills/modern-web-guidance/**`
 - Published source: [GoogleChrome/modern-web-guidance](https://github.com/GoogleChrome/modern-web-guidance/tree/main/skills/modern-web-guidance)
 - Upstream source project: [GoogleChrome/modern-web-guidance-src](https://github.com/GoogleChrome/modern-web-guidance-src)
-- Copyright: `Copyright 2026 Google LLC`
+- Publisher: Google
+- Notices: The published upstream distribution provides no separate per-file copyright notice or NOTICE file; Google publishes it under the repository's Apache-2.0 license.
+- Attribution: Portions of the documentation are derived from MDN Web Docs by Mozilla Contributors, licensed under CC BY-SA 2.5 or later, and from W3C, WHATWG, and IETF specifications.
 - License: Apache License 2.0, reproduced once below for all Apache-licensed works
 
 ### use-webmcp-tool
 
-- Bundled runtime artifacts: `node_modules/use-webmcp-tool/useWebMCP.js` and `node_modules/use-webmcp-tool/useWebMCP.d.ts` from `use-webmcp-tool@0.2.0` (declared in `package.json`)
+- Dependency: `use-webmcp-tool@0.2.0`, declared in `package.json` and bundled into Boardspeak's client build through `components/WebMCPBridge.tsx`; it is not vendored in this repository.
 - Upstream source: [GoogleChromeLabs/use-webmcp-tool](https://github.com/GoogleChromeLabs/use-webmcp-tool)
 - Copyright: `Copyright 2026 Google LLC`
 - License: Apache License 2.0, reproduced once below for all Apache-licensed works

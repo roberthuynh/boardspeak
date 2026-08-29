@@ -4,6 +4,8 @@
 
 [Play Boardspeak](https://boardspeak.vercel.app)
 
+**[Try Demo: agent turn on the live site](https://boardspeak.vercel.app/?demo=1).** It works in a plain browser: move White once, then use the demo control to send one legal Black move through the same traced executor an agent uses.
+
 ## What it is
 
 Boardspeak is an open-source web implementation of Breakthrough, created by Dan Troyka, where White plays with a mouse and Black plays by talking to an AI agent. The page publishes the live board as WebMCP tools, so both players act on the same visible state and the legal tool surface changes with every turn.
@@ -47,7 +49,7 @@ Narration is on by default and needs no configuration. Without `OPENAI_API_KEY`,
 2. Install the Model Context Tool Inspector extension.
 3. Open Boardspeak and inspect the tools registered by the page.
 
-Without native WebMCP, Boardspeak shows a dismissible setup banner and loads the GoogleChromeLabs compatibility layer so the Inspector can still discover the page tools.
+Without native WebMCP, Boardspeak shows a collapsible setup banner and loads the GoogleChromeLabs compatibility layer so the Inspector can still discover the page tools.
 
 ## How it works
 
@@ -105,7 +107,7 @@ return () => {
 Start the deterministic fixture with `pnpm dev:eval`, then run:
 
 ```bash
-npx webmcp-evals smoke -u http://localhost:3000 -e evals/cases.json
+npx webmcp-evals --chrome-channel chrome smoke -u http://localhost:3000 -e evals/cases.json
 ```
 
 | Case | Expected tool | Smoke result |
@@ -134,16 +136,16 @@ pnpm build
 
 | Check | Result |
 |---|---:|
-| Unit, reducer, component, narration, and WebMCP contract tests | 66/66 PASS |
-| Chrome-compatible Playwright flows at desktop and 360px | 6/6 PASS |
+| Unit, reducer, component, narration, and WebMCP contract tests | 72/72 PASS |
+| Chromium Playwright flows at desktop and 360px | 6/6 PASS |
 | Twenty plies plus tool-driven New Game against a duplicate-name-throwing registry | 0 `InvalidStateError` |
 | Browser console and uncaught page errors across the six end-to-end flows | 0 |
-| Lighthouse accessibility on the production build | 100 |
+| Lighthouse accessibility on the production build | [100](./public/readme/lighthouse-accessibility.html) |
 | Next.js production build | PASS |
 
 ## Accessibility
 
-The board is a semantic grid of 64 native buttons with exact square and occupancy labels, visible keyboard focus, and a polite live move/win log. Three audio layers work in order: that always-available live region, the browser Web Speech API with no configuration, and optional OpenAI text-to-speech when a server-side key is present. Enhanced narration is disclosed in the interface as AI-generated. The agent-facing description and legal-move tools let a blind player understand and play the same visual position by conversation.
+The board is a semantic grid of 64 native buttons with exact square and occupancy labels, including “legal destination” and “legal capture” on playable targets, visible keyboard focus, and a polite live move/win log. Three audio layers work in order: that always-available live region, the browser Web Speech API with no configuration, and optional OpenAI text-to-speech when a server-side key is present. Enhanced narration is disclosed in the interface as AI-generated. The agent-facing description and legal-move tools let a blind player understand and play the same visual position by conversation.
 
 ## License
 
