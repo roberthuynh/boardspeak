@@ -52,6 +52,45 @@ describe("game session reducer", () => {
 
     const cleared = gameReducer(selected, { type: "select", square: null });
     expect(cleared.announcement).toBe("Selection cleared.");
+    expect(cleared.selected).toBeNull();
+    expect(cleared.suggestion).toBeNull();
+    expect(cleared.revision).toBe(selected.revision + 1);
+  });
+
+  it("keeps the live announcement quiet for clean-board empty and opponent clicks", () => {
+    const initial = createSessionState();
+    const afterEmptySquare = gameReducer(initial, {
+      type: "select",
+      square: null,
+    });
+    const afterOpponentPawn = gameReducer(afterEmptySquare, {
+      type: "select",
+      square: null,
+    });
+
+    expect(afterEmptySquare).toBe(initial);
+    expect(afterOpponentPawn).toBe(initial);
+    expect(afterOpponentPawn.announcement).toBe("White to move.");
+    expect(afterOpponentPawn.revision).toBe(0);
+  });
+
+  it("clears an agent suggestion silently when no pawn is selected", () => {
+    const initial = createSessionState();
+    const suggestion = legalMoves(initial.position, "white")[0];
+    const suggested = gameReducer(initial, {
+      type: "setSuggestion",
+      move: suggestion,
+    });
+    const suggestionOnly = { ...suggested, selected: null };
+    const cleared = gameReducer(suggestionOnly, {
+      type: "select",
+      square: null,
+    });
+
+    expect(cleared.suggestion).toBeNull();
+    expect(cleared.selected).toBeNull();
+    expect(cleared.announcement).toBe(suggestionOnly.announcement);
+    expect(cleared.revision).toBe(suggestionOnly.revision + 1);
   });
 
   it("plays both colors by the same reducer path and records plain language", () => {

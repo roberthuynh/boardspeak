@@ -6,7 +6,7 @@
 
 ## What it is
 
-Boardspeak is an open-source web board game where White plays with a mouse and Black plays by talking to an AI agent. The page publishes the live board as WebMCP tools, so both players act on the same visible state and the legal tool surface changes with every turn.
+Boardspeak is an open-source web implementation of Breakthrough, created by Dan Troyka, where White plays with a mouse and Black plays by talking to an AI agent. The page publishes the live board as WebMCP tools, so both players act on the same visible state and the legal tool surface changes with every turn.
 
 > Demo video: final three-minute walkthrough coming before submission.
 

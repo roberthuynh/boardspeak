@@ -29,12 +29,19 @@ async function openPlainBrowserGame(page: Page, path = "/") {
 }
 
 async function playMouseMove(page: Page, fromSquare: string, toSquare: string) {
-  await page.locator(`.board-square[data-square="${fromSquare}"]`).click();
+  const source = page.locator(`.board-square[data-square="${fromSquare}"]`);
+  await expect(source).toHaveAttribute(
+    "aria-label",
+    new RegExp(`^${fromSquare}, (?:white|black) pawn$`),
+  );
+  await source.click();
   const destination = page.locator(`.board-square[data-square="${toSquare}"]`);
   await expect(destination).toHaveAttribute("data-legal-target", "true");
   await expect(destination).toHaveAttribute(
     "aria-label",
-    new RegExp(`^${toSquare}, .+, legal (?:destination|capture)$`),
+    new RegExp(
+      `^${toSquare}, (?:empty|(?:white|black) pawn), legal (?:destination|capture)$`,
+    ),
   );
   await destination.click();
 }
@@ -93,17 +100,44 @@ test("plain-browser setup can collapse without hiding the demo action", async ({
   ).toBeVisible();
   const demo = page.getByRole("button", { name: "Demo: agent turn" });
   await expect(demo).toBeVisible();
+  await expect(page.getByText("Plain browser mode")).toBeVisible();
+
+  const bannerListStyle = await page
+    .locator(".agent-banner ol")
+    .evaluate((list) => getComputedStyle(list).listStyleType);
+  expect(bannerListStyle).toBe("decimal");
+
+  const disabledDemoStyle = await demo.evaluate((button) => {
+    const style = getComputedStyle(button);
+    return {
+      background: style.backgroundColor,
+      color: style.color,
+      opacity: style.opacity,
+    };
+  });
+  expect(disabledDemoStyle).toEqual({
+    background: "rgb(113, 51, 38)",
+    color: "rgb(216, 193, 183)",
+    opacity: "1",
+  });
 
   await page.getByRole("button", { name: "Hide setup" }).click();
   await expect(
     page.getByRole("heading", { name: "Voice play needs WebMCP" }),
   ).toBeHidden();
   await expect(demo).toBeVisible();
+  await expect(page.getByText("Plain browser mode")).toBeVisible();
 
   await page.getByRole("button", { name: "Show agent setup" }).click();
   await expect(
     page.getByRole("heading", { name: "Voice play needs WebMCP" }),
   ).toBeVisible();
+
+  await page.getByText("How to play").click();
+  const rulesListStyle = await page
+    .locator(".how-to-play ol")
+    .evaluate((list) => getComputedStyle(list).listStyleType);
+  expect(rulesListStyle).toBe("decimal");
 });
 
 test("practice mode gives Black a visible White bot reply", async ({ page }) => {

@@ -27,16 +27,14 @@ export function AgentBanner({
       className="agent-banner"
       data-collapsed={dismissed}
     >
+      <p className="agent-banner-chip">Plain browser mode</p>
+
       <div
         className="agent-banner-copy"
         hidden={dismissed}
         id="agent-banner-instructions"
       >
-        <span aria-hidden="true" className="agent-banner-icon">
-          !
-        </span>
         <div className="agent-banner-message">
-          <p className="panel-kicker">Plain browser mode</p>
           <h2>Voice play needs WebMCP</h2>
           <p className="agent-banner-lede">
             Mouse play works now. To let an agent play Black, choose either setup:

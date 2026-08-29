@@ -183,6 +183,18 @@ export function gameReducer(state: SessionState, action: GameAction): SessionSta
   switch (action.type) {
     case "select": {
       if (!action.square) {
+        if (state.selected === null && state.suggestion === null) {
+          return state;
+        }
+
+        if (state.selected === null) {
+          return {
+            ...state,
+            suggestion: null,
+            revision: nextRevision(state),
+          };
+        }
+
         return {
           ...state,
           selected: null,

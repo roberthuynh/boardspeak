@@ -147,6 +147,20 @@ describe("accessible board experience", () => {
     expect(status).toHaveTextContent("Selection cleared.");
   });
 
+  it("does not announce selection clearing for clean-board empty or opponent clicks", () => {
+    const { container } = render(<Game />);
+    const status = screen.getByRole("status");
+
+    expect(status).toHaveTextContent("White to move.");
+    fireEvent.click(boardButton(container, "e4"));
+    expect(status).toHaveTextContent("White to move.");
+    expect(status).not.toHaveTextContent("Selection cleared.");
+
+    fireEvent.click(boardButton(container, "e7"));
+    expect(status).toHaveTextContent("White to move.");
+    expect(status).not.toHaveTextContent("Selection cleared.");
+  });
+
   it("keeps move and win announcements in one polite live region", () => {
     const { container } = render(
       <MoveLog
@@ -179,6 +193,7 @@ describe("accessible board experience", () => {
     expect(
       screen.getByRole("heading", { name: "Voice play needs WebMCP" }),
     ).toBeVisible();
+    expect(screen.getByText("Plain browser mode")).toBeVisible();
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
     expect(screen.getByText(/ChatGPT desktop:/)).toBeVisible();
     expect(screen.getByText(/Chrome 149\+:/)).toBeVisible();
@@ -202,6 +217,7 @@ describe("accessible board experience", () => {
     expect(
       screen.queryByRole("heading", { name: "Voice play needs WebMCP" }),
     ).not.toBeInTheDocument();
+    expect(screen.getByText("Plain browser mode")).toBeVisible();
     expect(
       screen.getByRole("button", { name: "Demo: agent turn" }),
     ).toBeVisible();
@@ -211,10 +227,15 @@ describe("accessible board experience", () => {
     expect(onDismissedChange).toHaveBeenCalledWith(false);
   });
 
-  it("renders shared rules and notation beside the board", () => {
+  it("renders the game credit, shared rules, and notation beside the board", () => {
     const { container } = render(<Game />);
 
     expect(container.querySelector(".win-summary")).toHaveTextContent(RULES[2]);
+    const gameCredit = container.querySelector(".game-credit");
+    expect(gameCredit).toBeVisible();
+    expect(gameCredit).toHaveTextContent(
+      "Game: Breakthrough, created by Dan Troyka.",
+    );
     const details = screen.getByText("How to play").closest("details");
     expect(details).not.toBeNull();
     for (const rule of RULES) {

@@ -689,6 +689,9 @@ function GameInner() {
               <p className="win-summary">
                 <strong>How to win:</strong> {RULES[2]}
               </p>
+              <p className="game-credit">
+                Game: Breakthrough, created by Dan Troyka.
+              </p>
               <details className="how-to-play">
                 <summary>How to play</summary>
                 <ol>
