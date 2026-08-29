@@ -134,10 +134,10 @@ pnpm build
 
 | Check | Result |
 |---|---:|
-| Unit, reducer, component, narration, and WebMCP contract tests | 50/50 PASS |
-| Chrome-compatible Playwright flows at desktop and 360px | 4/4 PASS |
+| Unit, reducer, component, narration, and WebMCP contract tests | 66/66 PASS |
+| Chrome-compatible Playwright flows at desktop and 360px | 6/6 PASS |
 | Twenty plies plus tool-driven New Game against a duplicate-name-throwing registry | 0 `InvalidStateError` |
-| Browser console and uncaught page errors across the four end-to-end flows | 0 |
+| Browser console and uncaught page errors across the six end-to-end flows | 0 |
 | Lighthouse accessibility on the production build | 100 |
 | Next.js production build | PASS |
 
