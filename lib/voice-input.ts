@@ -1,3 +1,5 @@
+import type { LegalMoveListOutput, MoveTag } from "./tools";
+
 const NUMBER_WORDS: Readonly<Record<string, string>> = {
   one: "1",
   two: "2",
@@ -21,6 +23,32 @@ const FILE_WORDS: Readonly<Record<string, string>> = {
   gee: "g",
   aitch: "h",
 };
+
+const VOICE_OPTIONS_CHUNK_LENGTH = 180;
+
+const SPOKEN_MOVE_GROUPS: ReadonlyArray<{
+  readonly key: MoveTag;
+  readonly label: string;
+}> = [
+  {
+    key: "advance",
+    label: "Advances",
+  },
+  {
+    key: "capture",
+    label: "Captures",
+  },
+  {
+    key: "winning",
+    label: "Winning moves",
+  },
+];
+
+export interface SpokenMoveOptions {
+  readonly total: number;
+  readonly fullText: string;
+  readonly chunks: readonly string[];
+}
 
 function spokenCoordinates(transcript: string): string[] {
   const normalized = transcript
@@ -55,8 +83,89 @@ export function matchSpokenMove(
   return matches.length === 1 ? matches[0]! : null;
 }
 
+export function isVoiceOptionsCommand(transcript: string): boolean {
+  return /^options[.!?]*$/i.test(transcript.trim());
+}
+
 export function spokenMoveExample(notation: string): string {
   return notation.includes("x")
     ? notation.replace("x", " takes ")
     : notation.replace("-", " to ");
+}
+
+function chunkSpokenGroup(
+  label: string,
+  notations: readonly string[],
+  maxLength: number,
+): string[] {
+  const chunks: string[] = [];
+  let entries: string[] = [];
+
+  const sentence = (values: readonly string[]) =>
+    `${label}: ${values.join(", ")}.`;
+
+  for (const notation of notations) {
+    const spoken = spokenMoveExample(notation);
+    const candidate = sentence([...entries, spoken]);
+
+    if (candidate.length <= maxLength) {
+      entries.push(spoken);
+      continue;
+    }
+
+    if (entries.length === 0) {
+      throw new Error(`Voice option ${notation} exceeds the speech chunk limit.`);
+    }
+
+    chunks.push(sentence(entries));
+    entries = [spoken];
+
+    if (sentence(entries).length > maxLength) {
+      throw new Error(`Voice option ${notation} exceeds the speech chunk limit.`);
+    }
+  }
+
+  if (entries.length > 0) {
+    chunks.push(sentence(entries));
+  }
+
+  return chunks;
+}
+
+export function buildSpokenMoveOptions(
+  output: Pick<
+    LegalMoveListOutput,
+    "moves" | "returned" | "total" | "truncated"
+  >,
+  maxLength = VOICE_OPTIONS_CHUNK_LENGTH,
+): SpokenMoveOptions {
+  if (!Number.isInteger(maxLength) || maxLength < 40) {
+    throw new Error("Voice option chunks require a limit of at least 40 characters.");
+  }
+
+  if (output.truncated || output.returned !== output.total) {
+    throw new Error("The legal move list is incomplete; say options again.");
+  }
+
+  const intro =
+    output.total === 0
+      ? "Black has no legal moves."
+      : `Black has ${output.total} legal ${output.total === 1 ? "move" : "moves"}.`;
+  const chunks = [intro];
+
+  for (const group of SPOKEN_MOVE_GROUPS) {
+    chunks.push(
+      ...chunkSpokenGroup(
+        group.label,
+        output.moves[group.key],
+        maxLength,
+      ),
+    );
+  }
+
+  return {
+    total: output.total,
+    fullText: chunks.join(" "),
+    chunks,
+  };
 }

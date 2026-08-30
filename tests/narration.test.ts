@@ -249,4 +249,76 @@ describe("browser narration helper", () => {
     expect(testRuntime.cancelSpeech).toHaveBeenCalled();
     expect(testRuntime.speakWithWebSpeech).not.toHaveBeenCalled();
   });
+
+  it("speaks local chunks in order and cancels the active sequence", async () => {
+    const spoken: string[] = [];
+    const localRuntime = runtime({
+      speakWithWebSpeech: vi.fn(async (text: string) => {
+        spoken.push(text);
+      }),
+    });
+    const localNarrator = createNarrator({
+      runtime: localRuntime,
+      sessionId: SESSION_ID,
+    });
+
+    await expect(
+      localNarrator.speakLocalSequence([
+        "Black has 3 legal moves.",
+        "Advances: a7 to a6.",
+        "Captures: e7 takes d6.",
+      ]),
+    ).resolves.toBe("web-speech");
+    expect(spoken).toEqual([
+      "Black has 3 legal moves.",
+      "Advances: a7 to a6.",
+      "Captures: e7 takes d6.",
+    ]);
+    expect(localRuntime.fetch).not.toHaveBeenCalled();
+
+    const pendingRuntime = runtime({
+      speakWithWebSpeech: vi.fn(
+        (_text: string, signal: AbortSignal) =>
+          new Promise<void>((_resolve, reject) => {
+            signal.addEventListener(
+              "abort",
+              () => {
+                const error = new Error("cancelled");
+                error.name = "AbortError";
+                reject(error);
+              },
+              { once: true },
+            );
+          }),
+      ),
+    });
+    const pendingNarrator = createNarrator({
+      runtime: pendingRuntime,
+      sessionId: SESSION_ID,
+    });
+    const pending = pendingNarrator.speakLocalSequence([
+      "Black has 22 legal moves.",
+      "Advances: a7 to a6.",
+    ]);
+
+    pendingNarrator.cancel();
+
+    await expect(pending).resolves.toBe("cancelled");
+    expect(pendingRuntime.fetch).not.toHaveBeenCalled();
+    expect(pendingRuntime.cancelSpeech).toHaveBeenCalled();
+    expect(pendingRuntime.speakWithWebSpeech).toHaveBeenCalledTimes(1);
+
+    const unavailableRuntime = runtime({
+      speakWithWebSpeech: vi.fn().mockRejectedValue(new Error("unavailable")),
+    });
+    const unavailableNarrator = createNarrator({
+      runtime: unavailableRuntime,
+      sessionId: SESSION_ID,
+    });
+
+    await expect(
+      unavailableNarrator.speakLocalSequence(["Black has 22 legal moves."]),
+    ).resolves.toBe("unavailable");
+    expect(unavailableRuntime.fetch).not.toHaveBeenCalled();
+  });
 });

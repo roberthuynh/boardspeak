@@ -50,8 +50,10 @@ import {
   moveArg,
   shouldExposeBoardspeakTestApi,
   tagMoves,
+  type LegalMoveListOutput,
   type ToolName,
 } from "@/lib/tools";
+import { buildSpokenMoveOptions } from "@/lib/voice-input";
 
 const EVAL_MODE = process.env.NEXT_PUBLIC_EVAL_MODE === "1";
 const EXPOSE_TEST_API = shouldExposeBoardspeakTestApi(
@@ -158,6 +160,7 @@ function GameInner({
   const toolQueueRef = useRef<Promise<void>>(Promise.resolve());
   const traceIdRef = useRef(0);
   const mouseMovePendingRef = useRef(false);
+  const spokenOptionsRunRef = useRef(0);
   const [nativeSupported, setNativeSupported] = useState<boolean | null>(null);
   const [showDemo, setShowDemo] = useState(false);
   const [narrator] = useState(() => createNarrator());
@@ -183,6 +186,7 @@ function GameInner({
   useEffect(() => {
     setShowDemo(new URLSearchParams(window.location.search).get("demo") === "1");
     return () => {
+      spokenOptionsRunRef.current += 1;
       for (const waiter of waitersRef.current) {
         waiter.resolve(stateRef.current);
       }
@@ -598,6 +602,39 @@ function GameInner({
     dispatch({ type: "announce", message });
   }, []);
 
+  const readSpokenBlackOptions = useCallback(async () => {
+    const runId = spokenOptionsRunRef.current + 1;
+    spokenOptionsRunRef.current = runId;
+    const result = (await executeTool(
+      "list_legal_moves",
+      {},
+    )) as LegalMoveListOutput;
+
+    if (
+      spokenOptionsRunRef.current !== runId ||
+      result.gameOver ||
+      !result.canPlayNow ||
+      stateRef.current.outcome ||
+      stateRef.current.position.sideToMove !== "black"
+    ) {
+      return "cancelled" as const;
+    }
+
+    const readout = buildSpokenMoveOptions(result);
+    const narrationResult = await narrator.speakLocalSequence(readout.chunks);
+
+    if (narrationResult === "unavailable") {
+      announceVoiceStatus(readout.fullText);
+    }
+
+    return narrationResult;
+  }, [announceVoiceStatus, executeTool, narrator]);
+
+  const cancelSpokenBlackOptions = useCallback(() => {
+    spokenOptionsRunRef.current += 1;
+    narrator.cancel();
+  }, [narrator]);
+
   const playMouseMove = useCallback(
     (move: Move) => {
       if (mouseMovePendingRef.current) {
@@ -823,7 +860,9 @@ function GameInner({
                 <BlackVoiceControl
                   legalNotations={legalBlackNotations}
                   onAnnounce={announceVoiceStatus}
+                  onCancelOptions={cancelSpokenBlackOptions}
                   onMove={playSpokenBlackMove}
+                  onOptions={readSpokenBlackOptions}
                   showUnavailable={nativeSupported === false}
                 />
               ) : null}

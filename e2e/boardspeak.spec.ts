@@ -28,6 +28,101 @@ async function openPlainBrowserGame(page: Page, path = "/") {
   await expect(page.locator(".board-square")).toHaveCount(64);
 }
 
+async function installFakeSpeechRecognition(page: Page) {
+  await page.addInitScript(() => {
+    class FakeSpeechRecognition {
+      static active: FakeSpeechRecognition | null = null;
+      continuous = false;
+      interimResults = false;
+      lang = "";
+      maxAlternatives = 1;
+      onstart: (() => void) | null = null;
+      onresult: ((event: {
+        results: ArrayLike<{ length: number; 0: { transcript: string } }>;
+      }) => void) | null = null;
+      onerror: ((event: { error: string }) => void) | null = null;
+      onend: (() => void) | null = null;
+
+      constructor() {
+        FakeSpeechRecognition.active = this;
+      }
+
+      start() {
+        this.onstart?.();
+      }
+
+      abort() {
+        this.onerror?.({ error: "aborted" });
+      }
+    }
+
+    Object.defineProperty(window, "__emitBoardspeakSpeech", {
+      configurable: true,
+      value: (transcript: string) => {
+        FakeSpeechRecognition.active?.onresult?.({
+          results: [{ 0: { transcript }, length: 1 }],
+        });
+        FakeSpeechRecognition.active?.onend?.();
+      },
+    });
+
+    Object.defineProperty(window, "webkitSpeechRecognition", {
+      configurable: true,
+      value: FakeSpeechRecognition,
+    });
+    Object.defineProperty(window, "SpeechRecognition", {
+      configurable: true,
+      value: FakeSpeechRecognition,
+    });
+  });
+}
+
+async function emitSpeech(page: Page, transcript: string) {
+  await page.evaluate((spokenTranscript) => {
+    (
+      window as unknown as {
+        __emitBoardspeakSpeech: (value: string) => void;
+      }
+    ).__emitBoardspeakSpeech(spokenTranscript);
+  }, transcript);
+}
+
+async function installFakeSpeechSynthesis(page: Page) {
+  await page.addInitScript(() => {
+    const spoken: string[] = [];
+
+    class FakeSpeechSynthesisUtterance {
+      onend: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      pitch = 1;
+      rate = 1;
+
+      constructor(readonly text: string) {}
+    }
+
+    const synthesis = {
+      cancel() {},
+      speak(utterance: FakeSpeechSynthesisUtterance) {
+        spoken.push(utterance.text);
+        window.setTimeout(() => utterance.onend?.(), 0);
+      },
+    };
+
+    Object.defineProperty(window, "__boardspeakSpokenOptions", {
+      configurable: true,
+      value: spoken,
+    });
+    Object.defineProperty(window, "SpeechSynthesisUtterance", {
+      configurable: true,
+      value: FakeSpeechSynthesisUtterance,
+    });
+    Object.defineProperty(window, "speechSynthesis", {
+      configurable: true,
+      value: synthesis,
+    });
+  });
+}
+
 async function playMouseMove(page: Page, fromSquare: string, toSquare: string) {
   const source = page.locator(`.board-square[data-square="${fromSquare}"]`);
   await expect(source).toHaveAttribute(
@@ -107,52 +202,7 @@ test("demo mode sends Black through the traced tool execution path", async ({ pa
 test("plain Chrome speech plays a current legal Black move through the trace", async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    class FakeSpeechRecognition {
-      static active: FakeSpeechRecognition | null = null;
-      continuous = false;
-      interimResults = false;
-      lang = "";
-      maxAlternatives = 1;
-      onstart: (() => void) | null = null;
-      onresult: ((event: {
-        results: ArrayLike<{ length: number; 0: { transcript: string } }>;
-      }) => void) | null = null;
-      onerror: ((event: { error: string }) => void) | null = null;
-      onend: (() => void) | null = null;
-
-      constructor() {
-        FakeSpeechRecognition.active = this;
-      }
-
-      start() {
-        this.onstart?.();
-      }
-
-      abort() {
-        this.onerror?.({ error: "aborted" });
-      }
-    }
-
-    Object.defineProperty(window, "__emitBoardspeakSpeech", {
-      configurable: true,
-      value: () => {
-        FakeSpeechRecognition.active?.onresult?.({
-          results: [{ 0: { transcript: "e seven to e six" }, length: 1 }],
-        });
-        FakeSpeechRecognition.active?.onend?.();
-      },
-    });
-
-    Object.defineProperty(window, "webkitSpeechRecognition", {
-      configurable: true,
-      value: FakeSpeechRecognition,
-    });
-    Object.defineProperty(window, "SpeechRecognition", {
-      configurable: true,
-      value: FakeSpeechRecognition,
-    });
-  });
+  await installFakeSpeechRecognition(page);
   await openPlainBrowserGame(page);
   await playMouseMove(page, "e2", "e3");
 
@@ -160,13 +210,7 @@ test("plain Chrome speech plays a current legal Black move through the trace", a
   await expect(mic).toBeEnabled();
   await mic.click();
   await expect(page.getByRole("button", { name: "Stop listening" })).toBeVisible();
-  await page.evaluate(() =>
-    (
-      window as unknown as {
-        __emitBoardspeakSpeech: () => void;
-      }
-    ).__emitBoardspeakSpeech(),
-  );
+  await emitSpeech(page, "e seven to e six");
   await expect(page.getByRole("heading", { name: "White to move" })).toBeVisible();
   await expect(page.locator(".move-entry").first()).toContainText(
     "Black e7 moves to e6",
@@ -174,6 +218,150 @@ test("plain Chrome speech plays a current legal Black move through the trace", a
   await page.getByText("Agent call trace", { exact: true }).click();
   await expect(page.locator(".trace-entry").first()).toContainText("play_move");
   await expect(page.locator(".trace-entry").first()).toContainText("e7-e6");
+});
+
+test("plain Chrome speech reads every current Black option without moving", async ({
+  page,
+}) => {
+  await installFakeSpeechRecognition(page);
+  await installFakeSpeechSynthesis(page);
+  const narrationRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/narrate") {
+      narrationRequests.push(request.url());
+    }
+  });
+
+  await openPlainBrowserGame(page);
+  const narrationToggle = page.getByRole("button", { name: "Narrate moves" });
+  await narrationToggle.click();
+  await expect(narrationToggle).toHaveAttribute("aria-pressed", "false");
+  await playMouseMove(page, "e2", "e3");
+  await expect(page.getByRole("heading", { name: "Black to move" })).toBeVisible();
+
+  const boardBefore = await page.locator(".board-square").evaluateAll((squares) =>
+    squares.map((square) => ({
+      label: square.getAttribute("aria-label"),
+      square: (square as HTMLElement).dataset.square,
+    })),
+  );
+  const moveLogBefore = await page.locator(".move-entry").allTextContents();
+
+  const mic = page.getByRole("button", { name: "Speak Black move" });
+  await mic.click();
+  await expect(page.getByRole("button", { name: "Stop listening" })).toBeVisible();
+  await emitSpeech(page, "options");
+
+  await expect(page.getByRole("button", { name: "Speak Black move" })).toBeEnabled();
+  await expect(page.getByRole("heading", { name: "Black to move" })).toBeVisible();
+  await expect(page.locator(".board-square")).toHaveCount(64);
+  expect(
+    await page.locator(".board-square").evaluateAll((squares) =>
+      squares.map((square) => ({
+        label: square.getAttribute("aria-label"),
+        square: (square as HTMLElement).dataset.square,
+      })),
+    ),
+  ).toEqual(boardBefore);
+  expect(await page.locator(".move-entry").allTextContents()).toEqual(moveLogBefore);
+
+  const spoken = await page.evaluate(() =>
+    Array.from(
+      (
+        window as unknown as {
+          __boardspeakSpokenOptions: string[];
+        }
+      ).__boardspeakSpokenOptions,
+    ),
+  );
+  const spokenText = spoken.join(" ");
+  const expectedMoves = [
+    "a7 to a6",
+    "a7 to b6",
+    "b7 to a6",
+    "b7 to b6",
+    "b7 to c6",
+    "c7 to b6",
+    "c7 to c6",
+    "c7 to d6",
+    "d7 to c6",
+    "d7 to d6",
+    "d7 to e6",
+    "e7 to d6",
+    "e7 to e6",
+    "e7 to f6",
+    "f7 to e6",
+    "f7 to f6",
+    "f7 to g6",
+    "g7 to f6",
+    "g7 to g6",
+    "g7 to h6",
+    "h7 to g6",
+    "h7 to h6",
+  ];
+
+  expect(spokenText).toContain("Black has 22 legal moves.");
+  expect(spokenText).toContain("Advances:");
+  for (const move of expectedMoves) {
+    expect(spokenText.split(move)).toHaveLength(2);
+  }
+  expect(narrationRequests).toEqual([]);
+
+  await page.getByText("Agent call trace", { exact: true }).click();
+  await expect(page.locator(".trace-entry").first()).toContainText(
+    "list_legal_moves",
+  );
+  await expect(page.locator('.trace-entry', { hasText: "play_move" })).toHaveCount(0);
+
+  const newestTrace = await page.evaluate(() => {
+    const state = window.__boardspeak?.getState() as
+      | {
+          trace?: Array<{
+            name: string;
+            args: unknown;
+            isError: boolean;
+          }>;
+        }
+      | undefined;
+    return state?.trace?.[0] ?? null;
+  });
+  expect(newestTrace).toMatchObject({
+    name: "list_legal_moves",
+    args: {},
+    isError: false,
+  });
+
+  const spokenCountBeforeQueuedMove = spoken.length;
+  await mic.click();
+  await expect(page.getByRole("button", { name: "Stop listening" })).toBeVisible();
+  await page.evaluate(async () => {
+    const boardspeak = window.__boardspeak;
+    if (!boardspeak) {
+      throw new Error("Boardspeak test API is unavailable.");
+    }
+
+    const move = boardspeak.executeTool("play_move", { move: "e7-e6" });
+    (
+      window as unknown as {
+        __emitBoardspeakSpeech: (value: string) => void;
+      }
+    ).__emitBoardspeakSpeech("options");
+    await move;
+  });
+
+  await expect(page.getByRole("heading", { name: "White to move" })).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __boardspeakSpokenOptions: string[];
+            }
+          ).__boardspeakSpokenOptions.length,
+      ),
+    )
+    .toBe(spokenCountBeforeQueuedMove);
 });
 
 test("plain browsers without speech recognition keep a clear Black fallback", async ({

@@ -169,7 +169,9 @@ describe("accessible board experience", () => {
       <BlackVoiceControl
         legalNotations={["e7-e6"]}
         onAnnounce={() => undefined}
+        onCancelOptions={() => undefined}
         onMove={onMove}
+        onOptions={async () => "web-speech"}
       />,
     );
 
@@ -217,9 +219,16 @@ describe("accessible board experience", () => {
         this.onerror?.({ error: "aborted" });
       }
 
-      emit(transcript: string) {
+      emit(transcript: string, alternative?: string) {
+        const result = alternative
+          ? {
+              0: { transcript },
+              1: { transcript: alternative },
+              length: 2,
+            }
+          : { 0: { transcript }, length: 1 };
         this.onresult?.({
-          results: [{ 0: { transcript }, length: 1 }],
+          results: [result],
         });
         this.onend?.();
       }
@@ -235,17 +244,30 @@ describe("accessible board experience", () => {
     });
     const onAnnounce = vi.fn();
     let resolveMove: (() => void) | undefined;
+    let resolveOptions: ((result: "cancelled") => void) | undefined;
     const onMove = vi.fn(
       () =>
         new Promise<void>((resolve) => {
           resolveMove = resolve;
         }),
     );
+    let optionsCall = 0;
+    const onOptions = vi.fn(() => {
+      optionsCall += 1;
+      return optionsCall === 1
+        ? new Promise<"cancelled">((resolve) => {
+            resolveOptions = resolve;
+          })
+        : Promise.resolve("unavailable" as const);
+    });
+    const onCancelOptions = vi.fn();
     const { unmount } = render(
       <BlackVoiceControl
         legalNotations={["e7-e6"]}
         onAnnounce={onAnnounce}
+        onCancelOptions={onCancelOptions}
         onMove={onMove}
+        onOptions={onOptions}
       />,
     );
 
@@ -262,9 +284,13 @@ describe("accessible board experience", () => {
       "aria-pressed",
       "true",
     );
-    expect(onAnnounce).toHaveBeenCalledWith("Listening for Black's move.");
+    expect(onAnnounce).toHaveBeenCalledWith(
+      "Listening for Black's move or options.",
+    );
 
-    act(() => FakeSpeechRecognition.instance?.emit("e seven to e six"));
+    act(() =>
+      FakeSpeechRecognition.instance?.emit("e seven to e six", "options"),
+    );
     await waitFor(() => expect(onMove).toHaveBeenCalledWith("e7-e6"));
     const submitting = screen.getByRole("button", { name: "Playing move…" });
     expect(submitting).toHaveAttribute("aria-disabled", "true");
@@ -274,10 +300,49 @@ describe("accessible board experience", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Speak Black move" }));
     act(() => FakeSpeechRecognition.instance?.begin());
+    act(() => FakeSpeechRecognition.instance?.emit("options"));
+    await waitFor(() => expect(onOptions).toHaveBeenCalledTimes(1));
+    expect(onMove).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole("button", { name: "Stop reading options" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Stop reading options" }),
+    );
+    expect(onCancelOptions).toHaveBeenCalledTimes(1);
+    await act(async () => resolveOptions?.("cancelled"));
+    expect(screen.getByText("Options readout stopped.")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Speak Black move" }));
+    act(() => FakeSpeechRecognition.instance?.begin());
+    act(() => FakeSpeechRecognition.instance?.emit("options"));
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "Speech playback is unavailable. Your legal moves were sent to the screen reader.",
+        ),
+      ).toBeVisible(),
+    );
+    expect(onOptions).toHaveBeenCalledTimes(2);
+    expect(onMove).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Speak Black move" }));
+    act(() => FakeSpeechRecognition.instance?.begin());
+    act(() => FakeSpeechRecognition.instance?.emit("what else can I do"));
+    await waitFor(() =>
+      expect(onAnnounce).toHaveBeenCalledWith(
+        "I heard “what else can I do.” That is not a current legal move. Say a move like “e7 to e6,” or say “options” to hear your moves.",
+      ),
+    );
+    expect(onOptions).toHaveBeenCalledTimes(2);
+    expect(onMove).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Speak Black move" }));
+    act(() => FakeSpeechRecognition.instance?.begin());
     act(() => FakeSpeechRecognition.instance?.finishWithoutSpeech());
     await waitFor(() =>
       expect(onAnnounce).toHaveBeenCalledWith(
-        "No move was heard. Say “e7 to e6.”",
+        "No command was heard. Say a move like “e7 to e6,” or say “options” to hear your moves.",
       ),
     );
 
@@ -285,6 +350,7 @@ describe("accessible board experience", () => {
     act(() => FakeSpeechRecognition.instance?.begin());
     unmount();
     expect(FakeSpeechRecognition.abortCount).toBe(1);
+    expect(onCancelOptions).toHaveBeenCalledTimes(2);
   });
 
   it("routes reducer messages through one polite status region", async () => {

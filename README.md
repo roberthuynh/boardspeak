@@ -33,7 +33,7 @@ Add `?demo=1` in a plain browser. After White moves, **Demo: agent turn** invoke
 
 Turn on **Bot plays White** to let the built-in White bot answer after 300ms. Black remains controlled by the agent, the on-page microphone, or the mouse, so one person can demonstrate the complete game loop.
 
-On Black's turn in Chrome, choose **Speak Black move** and say both squares, such as “e7 to e6” or “e7 takes d6.” Speech is matched only against the legal move enum for that turn, then runs through the same validated and traced `play_move` path as an agent call.
+On Black's turn in Chrome, choose **Speak Black move** and say both squares, such as “e7 to e6” or “e7 takes d6.” Speech is matched only against the legal move enum for that turn, then runs through the same validated and traced `play_move` path as an agent call. Say the single keyword **“options”** to hear every current legal move grouped as advances, captures, and winning moves. The keyword is matched exactly and locally, with no LLM interpretation.
 
 Narration is on by default and needs no configuration. Without `OPENAI_API_KEY`, moves use the browser Web Speech API; with the key set only on the server, `/api/narrate` returns short AI-generated speech and silently falls back to Web Speech on any error.
 
@@ -138,17 +138,17 @@ pnpm build
 
 | Check | Result |
 |---|---:|
-| Unit, reducer, component, narration, voice-input, and WebMCP contract tests | 79/79 PASS |
-| Chromium Playwright flows at desktop and 360px | 8/8 PASS |
+| Unit, reducer, component, narration, voice-input, and WebMCP contract tests | 82/82 PASS |
+| Chromium Playwright flows at desktop and 360px | 9/9 PASS |
 | Twenty plies plus tool-driven New Game against a duplicate-name-throwing registry | 0 `InvalidStateError` |
-| Browser console and uncaught page errors across the eight end-to-end flows | 0 |
+| Browser console and uncaught page errors across the nine end-to-end flows | 0 |
 | Lighthouse accessibility, mobile production URL | [100](https://boardspeak.vercel.app/readme/lighthouse-accessibility.html) |
 | Lighthouse accessibility, desktop production URL | [100](https://boardspeak.vercel.app/readme/lighthouse-accessibility-desktop.html) |
 | Next.js production build | PASS |
 
 ## Accessibility
 
-The board is a semantic grid of 64 native buttons with exact square and occupancy labels, including “legal destination” and “legal capture” on playable targets, visible keyboard focus, and a polite live move/win log. Three audio layers work in order: that always-available live region, the browser Web Speech API with no configuration, and optional OpenAI text-to-speech when a server-side key is present. Chrome Speech Recognition also provides an on-page Black microphone that accepts only a currently legal source-and-destination pair. Enhanced narration is disclosed in the interface as AI-generated. The agent-facing description and legal-move tools let a blind player understand and play the same visual position by conversation.
+The board is a semantic grid of 64 native buttons with exact square and occupancy labels, including “legal destination” and “legal capture” on playable targets, visible keyboard focus, and a polite live move/win log. Three audio layers work in order: that always-available live region, the browser Web Speech API with no configuration, and optional OpenAI text-to-speech when a server-side key is present. Chrome Speech Recognition also provides an on-page Black microphone that accepts only a currently legal source-and-destination pair or the exact local keyword **“options.”** That keyword reads every current legal move aloud in advance, capture, and winning groups without LLM interpretation, so a blind player can independently discover the available moves in plain Chrome. Enhanced narration is disclosed in the interface as AI-generated. The agent-facing description and legal-move tools let a blind player understand and play the same visual position by conversation.
 
 ## License
 

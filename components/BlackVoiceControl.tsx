@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { matchSpokenMove, spokenMoveExample } from "@/lib/voice-input";
+import type { LocalNarrationResult } from "@/lib/narration";
+import {
+  isVoiceOptionsCommand,
+  matchSpokenMove,
+  spokenMoveExample,
+} from "@/lib/voice-input";
 
 interface SpeechAlternativeLike {
   readonly transcript: string;
@@ -39,12 +44,19 @@ type VoiceWindow = Window & {
   readonly webkitSpeechRecognition?: SpeechRecognitionConstructor;
 };
 
-type VoicePhase = "idle" | "requesting" | "listening" | "submitting";
+type VoicePhase =
+  | "idle"
+  | "requesting"
+  | "listening"
+  | "submitting"
+  | "reading-options";
 
 interface BlackVoiceControlProps {
   readonly legalNotations: readonly string[];
   readonly onAnnounce: (message: string) => void;
+  readonly onCancelOptions: () => void;
   readonly onMove: (notation: string) => Promise<void>;
+  readonly onOptions: () => Promise<LocalNarrationResult>;
   readonly showUnavailable?: boolean;
 }
 
@@ -57,7 +69,11 @@ function recognitionConstructor(): SpeechRecognitionConstructor | null {
   );
 }
 
-function recognitionError(error: string, example: string): string {
+function voiceInstruction(example: string): string {
+  return `Say a move like “${example},” or say “options” to hear your moves.`;
+}
+
+function recognitionError(error: string, instruction: string): string {
   switch (error) {
     case "aborted":
       return "Listening stopped.";
@@ -66,7 +82,7 @@ function recognitionError(error: string, example: string): string {
     case "network":
       return "Speech recognition could not connect. Try again or use your agent.";
     case "no-speech":
-      return `No move was heard. Say a move like “${example}.”`;
+      return `No command was heard. ${instruction}`;
     case "not-allowed":
     case "service-not-allowed":
       return "Microphone access is blocked. Allow it or ask your agent to move Black.";
@@ -78,7 +94,9 @@ function recognitionError(error: string, example: string): string {
 export function BlackVoiceControl({
   legalNotations,
   onAnnounce,
+  onCancelOptions,
   onMove,
+  onOptions,
   showUnavailable = true,
 }: BlackVoiceControlProps) {
   const [supported, setSupported] = useState<boolean | null>(null);
@@ -86,6 +104,7 @@ export function BlackVoiceControl({
   const [feedback, setFeedback] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const mountedRef = useRef(true);
+  const optionsRunRef = useRef(0);
   const example = useMemo(
     () => spokenMoveExample(legalNotations[0] ?? "e7-e6"),
     [legalNotations],
@@ -97,23 +116,37 @@ export function BlackVoiceControl({
 
     return () => {
       mountedRef.current = false;
+      optionsRunRef.current += 1;
       recognitionRef.current?.abort();
       recognitionRef.current = null;
+      onCancelOptions();
     };
-  }, []);
+  }, [onCancelOptions]);
+
+  const instruction = voiceInstruction(example);
 
   const defaultFeedback =
     supported === null
       ? "Checking browser microphone support…"
       : supported
-        ? `Say a move like “${example}.”`
+        ? instruction
         : "Voice input is unavailable here. Move Black with an agent or the mouse.";
   const message = feedback ?? defaultFeedback;
   const listening = phase === "listening";
+  const readingOptions = phase === "reading-options";
   const unavailable = supported !== true || legalNotations.length === 0;
   const locked = unavailable || phase === "requesting" || phase === "submitting";
 
   const beginListening = () => {
+    if (readingOptions) {
+      optionsRunRef.current += 1;
+      onCancelOptions();
+      setPhase("idle");
+      setFeedback("Options readout stopped.");
+      onAnnounce("Options readout stopped.");
+      return;
+    }
+
     if (listening) {
       recognitionRef.current?.abort();
       recognitionRef.current = null;
@@ -146,8 +179,8 @@ export function BlackVoiceControl({
     recognition.onstart = () => {
       if (!mountedRef.current) return;
       setPhase("listening");
-      setFeedback("Listening for Black’s move…");
-      onAnnounce("Listening for Black's move.");
+      setFeedback("Listening for Black’s move or options…");
+      onAnnounce("Listening for Black's move or options.");
     };
 
     recognition.onresult = (event) => {
@@ -158,19 +191,74 @@ export function BlackVoiceControl({
           result[index]?.transcript.trim(),
         ).filter((transcript): transcript is string => Boolean(transcript)),
       );
-      const match = transcripts
-        .map((transcript) => matchSpokenMove(transcript, legalNotations))
-        .find((notation): notation is string => Boolean(notation));
+      const interpretation = transcripts
+        .map((transcript) => {
+          if (isVoiceOptionsCommand(transcript)) {
+            return { type: "options" as const };
+          }
 
-      if (!match) {
+          const notation = matchSpokenMove(transcript, legalNotations);
+          return notation ? { type: "move" as const, notation } : null;
+        })
+        .find(
+          (
+            candidate,
+          ): candidate is
+            | { readonly type: "options" }
+            | { readonly type: "move"; readonly notation: string } =>
+            candidate !== null,
+        );
+
+      if (interpretation?.type === "options") {
+        const runId = optionsRunRef.current + 1;
+        optionsRunRef.current = runId;
+        const count = legalNotations.length;
+        const countLabel = `${count} legal ${count === 1 ? "move" : "moves"}`;
+        setPhase("reading-options");
+        setFeedback(`Reading ${countLabel}…`);
+
+        void onOptions()
+          .then((result) => {
+            if (!mountedRef.current || optionsRunRef.current !== runId) return;
+            setPhase("idle");
+
+            if (result === "unavailable") {
+              setFeedback(
+                "Speech playback is unavailable. Your legal moves were sent to the screen reader.",
+              );
+              return;
+            }
+
+            if (result === "cancelled") {
+              setFeedback("Options readout stopped.");
+              return;
+            }
+
+            const completion = `Read ${countLabel}.`;
+            setFeedback(completion);
+            onAnnounce(completion);
+          })
+          .catch((error: unknown) => {
+            if (!mountedRef.current || optionsRunRef.current !== runId) return;
+            const detail = error instanceof Error ? error.message : String(error);
+            const retry = `Options could not be read. ${detail}`;
+            setPhase("idle");
+            setFeedback(retry);
+            onAnnounce(retry);
+          });
+        return;
+      }
+
+      if (interpretation?.type !== "move") {
         const heard = transcripts[0] ? `I heard “${transcripts[0]}.” ` : "";
-        const retry = `${heard}That is not a current legal move. Say “${example}.”`;
+        const retry = `${heard}That is not a current legal move. ${instruction}`;
         setPhase("idle");
         setFeedback(retry);
         onAnnounce(retry);
         return;
       }
 
+      const match = interpretation.notation;
       setPhase("submitting");
       setFeedback(`Playing ${match}…`);
       void onMove(match)
@@ -193,7 +281,7 @@ export function BlackVoiceControl({
       if (!mountedRef.current) return;
       handled = true;
       recognitionRef.current = null;
-      const message = recognitionError(event.error, example);
+      const message = recognitionError(event.error, instruction);
       setPhase("idle");
       setFeedback(message);
       if (event.error !== "aborted") {
@@ -204,7 +292,7 @@ export function BlackVoiceControl({
     recognition.onend = () => {
       recognitionRef.current = null;
       if (!mountedRef.current || handled) return;
-      const retry = `No move was heard. Say “${example}.”`;
+      const retry = `No command was heard. ${instruction}`;
       setPhase("idle");
       setFeedback(retry);
       onAnnounce(retry);
@@ -226,6 +314,8 @@ export function BlackVoiceControl({
       ? "Mic unavailable"
       : phase === "listening"
         ? "Stop listening"
+        : phase === "reading-options"
+          ? "Stop reading options"
         : phase === "requesting"
           ? "Waiting for mic…"
         : phase === "submitting"
@@ -241,7 +331,7 @@ export function BlackVoiceControl({
       <button
         aria-disabled={locked || undefined}
         aria-describedby="black-voice-feedback"
-        aria-pressed={listening}
+        aria-pressed={listening || readingOptions}
         disabled={unavailable}
         onClick={beginListening}
         type="button"

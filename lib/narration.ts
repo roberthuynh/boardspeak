@@ -54,6 +54,8 @@ export type NarrationResult =
   | "cancelled"
   | "unavailable";
 
+export type LocalNarrationResult = Exclude<NarrationResult, "openai">;
+
 export interface NarrationRuntime {
   fetch: (
     input: RequestInfo | URL,
@@ -75,6 +77,9 @@ export interface Narrator {
   readonly sessionId: string;
   cancel: () => void;
   speak: (text: string) => Promise<NarrationResult>;
+  speakLocalSequence: (
+    texts: readonly string[],
+  ) => Promise<LocalNarrationResult>;
 }
 
 export interface CreateNarratorOptions {
@@ -317,6 +322,34 @@ export function createNarrator(
       }
 
       return result;
+    },
+    speakLocalSequence: async (texts) => {
+      cancel();
+
+      const controller = new AbortController();
+      activeController = controller;
+
+      try {
+        for (const text of texts) {
+          if (controller.signal.aborted) {
+            return "cancelled";
+          }
+
+          await runtime.speakWithWebSpeech(text, controller.signal);
+        }
+
+        return "web-speech";
+      } catch (error) {
+        if (controller.signal.aborted || isAbortError(error)) {
+          return "cancelled";
+        }
+
+        return "unavailable";
+      } finally {
+        if (activeController === controller) {
+          activeController = null;
+        }
+      }
     },
   };
 }
