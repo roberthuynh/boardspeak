@@ -474,6 +474,10 @@ a {
   box-shadow: inset 0 0 0 1px rgb(229 185 92 / 24%);
 }
 
+.player-input-map > div[data-active="true"] dt {
+  color: #f4e8d4;
+}
+
 .turn-panel[data-side="black"] .player-input-map > div[data-active="true"] {
   border-color: #e56e44;
   background: #3a1d15;
