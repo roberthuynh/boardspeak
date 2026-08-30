@@ -54,6 +54,7 @@ export interface LegalMoveStatus {
   readonly canPlayNow: boolean;
   readonly gameOver: boolean;
   readonly winner: Side | null;
+  readonly nextAction?: string;
 }
 
 export interface LegalMoveListOutput extends LegalMoveStatus {
@@ -69,35 +70,35 @@ export const TOOL_META: Readonly<Record<ToolName, ToolMeta>> = {
     mode: "READ",
     readOnlyHint: true,
     description:
-      "Describe the live board in compact text and structured JSON. Returns every piece square, the side to move, move number, last move, captures, and winner so you can understand or verify the current position.",
+      "Describe the live board in compact text and structured JSON. Returns every piece square, the side to move, move number, last move, captures, winner, and what the player should do on White's turn.",
   },
   get_rules: {
     name: "get_rules",
     mode: "READ",
     readOnlyHint: true,
     description:
-      "Read the four rules of Breakthrough and its move notation. Returns the movement, capture, and win rules plus the differences from chess pawns and checkers pieces.",
+      "Read the four rules of Breakthrough and its move notation. Returns movement, capture, win, and prohibited-behavior rules plus what the player should do on White's turn.",
   },
   list_legal_moves: {
     name: "list_legal_moves",
     mode: "READ",
     readOnlyHint: true,
     description:
-      "List Black's legal moves and current game status. Returns bare move notations grouped as advance, capture, or winning, plus totals, truncation status, whether Black can play now, and the winner when the game is over.",
+      "List Black's legal moves and current game status. Returns grouped notations, totals, truncation status, whether Black can play now, the winner, and what the player should do on White's turn.",
   },
   play_move: {
     name: "play_move",
     mode: "ACT",
     readOnlyHint: false,
     description:
-      "Play one of Black's currently legal moves. Only the listed values are accepted. The board updates immediately and the turn passes to White. Returns the move result, White replies, and updated board.",
+      "Play one of Black's currently legal moves. Only the listed values are accepted. The board updates immediately and the turn passes to White. Returns the result, White replies, updated board, and the player's next action.",
   },
   play_capture: {
     name: "play_capture",
     mode: "ACT",
     readOnlyHint: false,
     description:
-      "Take a White pawn with one of Black's available captures. Choose this shortcut when the player asks to capture. Returns the capture result, White replies, and updated board.",
+      "Take a White pawn with one of Black's available captures. Choose this shortcut when the player asks to capture. Returns the result, White replies, updated board, and the player's next action.",
   },
   list_threats: {
     name: "list_threats",
@@ -163,6 +164,12 @@ export const NOTATION = {
   move: "e5-e4",
   capture: "e5xd4",
 } as const;
+
+export const WHITE_TURN_INSTRUCTION =
+  "White moves by mouse: ask the player to click a White pawn, then a destination, or turn on Bot plays White.";
+
+export const WHITE_BOT_INSTRUCTION =
+  "Bot plays White is on; wait for its move, then play Black.";
 
 export function classifyMove(state: GameState, move: Move): MoveTag {
   const analysisState =

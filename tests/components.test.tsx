@@ -2,6 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -10,6 +11,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentBanner } from "@/components/AgentBanner";
+import { BlackVoiceControl } from "@/components/BlackVoiceControl";
 import { Board } from "@/components/Board";
 import { Game } from "@/components/Game";
 import { MoveLog } from "@/components/MoveLog";
@@ -27,7 +29,11 @@ function boardButton(container: HTMLElement, square: string): HTMLButtonElement 
 }
 
 describe("accessible board experience", () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    Reflect.deleteProperty(window, "SpeechRecognition");
+    Reflect.deleteProperty(window, "webkitSpeechRecognition");
+  });
 
   beforeEach(() => {
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
@@ -123,6 +129,164 @@ describe("accessible board experience", () => {
     expect(screen.getAllByText("Black e7 moves to e6")).toHaveLength(1);
   });
 
+  it("makes the current side and its input method obvious", async () => {
+    const { container } = render(<Game />);
+
+    expect(screen.getByRole("button", { name: "Bot plays White" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(screen.getByText(/White uses the mouse:/)).toHaveTextContent(
+      "click a White pawn, then a highlighted square. Or turn on Bot plays White.",
+    );
+    expect(screen.getByText(/White to move now:/)).toHaveTextContent(
+      "click a White pawn, then a highlighted square.",
+    );
+    expect(container.querySelector('.player-input-map [data-active="true"]')).toHaveTextContent(
+      "WhiteMouseNow",
+    );
+
+    fireEvent.click(boardButton(container, "e2"));
+    fireEvent.click(boardButton(container, "e3"));
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Black to move" })).toBeVisible(),
+    );
+    expect(screen.getByText(/Black uses voice or an agent:/)).toHaveTextContent(
+      "use the on-page mic if shown, or ask your agent to move.",
+    );
+    expect(screen.getByText(/Black to move now:/)).toHaveTextContent(
+      "speak a move or ask your agent.",
+    );
+    expect(container.querySelector('.player-input-map [data-active="true"]')).toHaveTextContent(
+      "BlackVoice / agentNow",
+    );
+  });
+
+  it("shows an explicit fallback when browser speech recognition is unavailable", async () => {
+    const onMove = vi.fn();
+    render(
+      <BlackVoiceControl
+        legalNotations={["e7-e6"]}
+        onAnnounce={() => undefined}
+        onMove={onMove}
+      />,
+    );
+
+    const button = await screen.findByRole("button", { name: "Mic unavailable" });
+    expect(button).toBeDisabled();
+    expect(
+      screen.getByText(
+        "Voice input is unavailable here. Move Black with an agent or the mouse.",
+      ),
+    ).toBeVisible();
+    fireEvent.click(button);
+    expect(onMove).not.toHaveBeenCalled();
+  });
+
+  it("listens for a supported spoken move and submits the matched notation", async () => {
+    class FakeSpeechRecognition {
+      static instance: FakeSpeechRecognition | null = null;
+      static abortCount = 0;
+      static startCount = 0;
+      continuous = false;
+      interimResults = false;
+      lang = "";
+      maxAlternatives = 1;
+      onstart: (() => void) | null = null;
+      onresult: ((event: {
+        results: ArrayLike<{ length: number; 0: { transcript: string } }>;
+      }) => void) | null = null;
+      onerror: ((event: { error: string }) => void) | null = null;
+      onend: (() => void) | null = null;
+
+      constructor() {
+        FakeSpeechRecognition.instance = this;
+      }
+
+      start() {
+        FakeSpeechRecognition.startCount += 1;
+      }
+
+      begin() {
+        this.onstart?.();
+      }
+
+      abort() {
+        FakeSpeechRecognition.abortCount += 1;
+        this.onerror?.({ error: "aborted" });
+      }
+
+      emit(transcript: string) {
+        this.onresult?.({
+          results: [{ 0: { transcript }, length: 1 }],
+        });
+        this.onend?.();
+      }
+
+      finishWithoutSpeech() {
+        this.onend?.();
+      }
+    }
+
+    Object.defineProperty(window, "webkitSpeechRecognition", {
+      configurable: true,
+      value: FakeSpeechRecognition,
+    });
+    const onAnnounce = vi.fn();
+    let resolveMove: (() => void) | undefined;
+    const onMove = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveMove = resolve;
+        }),
+    );
+    const { unmount } = render(
+      <BlackVoiceControl
+        legalNotations={["e7-e6"]}
+        onAnnounce={onAnnounce}
+        onMove={onMove}
+      />,
+    );
+
+    const speak = await screen.findByRole("button", { name: "Speak Black move" });
+    fireEvent.click(speak);
+    const waiting = screen.getByRole("button", { name: "Waiting for mic…" });
+    expect(waiting).toHaveAttribute("aria-disabled", "true");
+    expect(waiting).not.toBeDisabled();
+    fireEvent.click(waiting);
+    expect(FakeSpeechRecognition.startCount).toBe(1);
+
+    act(() => FakeSpeechRecognition.instance?.begin());
+    expect(screen.getByRole("button", { name: "Stop listening" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(onAnnounce).toHaveBeenCalledWith("Listening for Black's move.");
+
+    act(() => FakeSpeechRecognition.instance?.emit("e seven to e six"));
+    await waitFor(() => expect(onMove).toHaveBeenCalledWith("e7-e6"));
+    const submitting = screen.getByRole("button", { name: "Playing move…" });
+    expect(submitting).toHaveAttribute("aria-disabled", "true");
+    expect(submitting).not.toBeDisabled();
+    await act(async () => resolveMove?.());
+    await waitFor(() => expect(screen.getByText("Played e7-e6.")).toBeVisible());
+
+    fireEvent.click(screen.getByRole("button", { name: "Speak Black move" }));
+    act(() => FakeSpeechRecognition.instance?.begin());
+    act(() => FakeSpeechRecognition.instance?.finishWithoutSpeech());
+    await waitFor(() =>
+      expect(onAnnounce).toHaveBeenCalledWith(
+        "No move was heard. Say “e7 to e6.”",
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Speak Black move" }));
+    act(() => FakeSpeechRecognition.instance?.begin());
+    unmount();
+    expect(FakeSpeechRecognition.abortCount).toBe(1);
+  });
+
   it("routes reducer messages through one polite status region", async () => {
     const { container } = render(<Game />);
 
@@ -191,7 +355,7 @@ describe("accessible board experience", () => {
     );
 
     expect(
-      screen.getByRole("heading", { name: "Voice play needs WebMCP" }),
+      screen.getByRole("heading", { name: "Agent play needs WebMCP" }),
     ).toBeVisible();
     expect(screen.getByText("Plain browser mode")).toBeVisible();
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
@@ -215,7 +379,7 @@ describe("accessible board experience", () => {
     );
 
     expect(
-      screen.queryByRole("heading", { name: "Voice play needs WebMCP" }),
+      screen.queryByRole("heading", { name: "Agent play needs WebMCP" }),
     ).not.toBeInTheDocument();
     expect(screen.getByText("Plain browser mode")).toBeVisible();
     expect(

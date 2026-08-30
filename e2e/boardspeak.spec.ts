@@ -50,16 +50,30 @@ test("mouse play passes the turn and changes the agent rail", async ({ page }) =
   await openPlainBrowserGame(page);
 
   const rail = page.locator(".tool-rail");
+  await expect(page.getByText(/White uses the mouse:/)).toContainText(
+    "click a White pawn, then a highlighted square. Or turn on Bot plays White.",
+  );
+  await expect(page.locator('.player-input-map [data-active="true"]')).toContainText(
+    "White",
+  );
+  await expect(page.locator('.player-input-map [data-active="true"]')).toContainText(
+    "Mouse",
+  );
   await expect(rail.locator('[data-tool-name="suggest_move"]')).toBeVisible();
   await expect(rail.locator('[data-tool-name="play_move"]')).toHaveCount(0);
 
   await playMouseMove(page, "e2", "e3");
   await expect(page.getByRole("heading", { name: "Black to move" })).toBeVisible();
+  await expect(page.getByText(/Black uses voice or an agent:/)).toBeVisible();
+  await expect(page.locator('.player-input-map [data-active="true"]')).toContainText(
+    "Voice / agent",
+  );
   await expect(rail.locator('[data-tool-name="play_move"]')).toContainText("22 legal");
   await expect(rail.locator('[data-tool-name="suggest_move"]')).toHaveCount(0);
 
   await playMouseMove(page, "e7", "e6");
   await expect(page.getByRole("heading", { name: "White to move" })).toBeVisible();
+  await expect(page.getByText(/White uses the mouse:/)).toBeVisible();
   await expect(rail.locator('[data-tool-name="play_move"]')).toHaveCount(0);
   await expect(rail.locator('[data-tool-name="suggest_move"]')).toBeVisible();
   await expect(page.locator(".move-entry").first()).toContainText("Black e7 moves to e6");
@@ -90,13 +104,109 @@ test("demo mode sends Black through the traced tool execution path", async ({ pa
   expect(newestTrace).toMatchObject({ name: "play_move", isError: false });
 });
 
+test("plain Chrome speech plays a current legal Black move through the trace", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    class FakeSpeechRecognition {
+      static active: FakeSpeechRecognition | null = null;
+      continuous = false;
+      interimResults = false;
+      lang = "";
+      maxAlternatives = 1;
+      onstart: (() => void) | null = null;
+      onresult: ((event: {
+        results: ArrayLike<{ length: number; 0: { transcript: string } }>;
+      }) => void) | null = null;
+      onerror: ((event: { error: string }) => void) | null = null;
+      onend: (() => void) | null = null;
+
+      constructor() {
+        FakeSpeechRecognition.active = this;
+      }
+
+      start() {
+        this.onstart?.();
+      }
+
+      abort() {
+        this.onerror?.({ error: "aborted" });
+      }
+    }
+
+    Object.defineProperty(window, "__emitBoardspeakSpeech", {
+      configurable: true,
+      value: () => {
+        FakeSpeechRecognition.active?.onresult?.({
+          results: [{ 0: { transcript: "e seven to e six" }, length: 1 }],
+        });
+        FakeSpeechRecognition.active?.onend?.();
+      },
+    });
+
+    Object.defineProperty(window, "webkitSpeechRecognition", {
+      configurable: true,
+      value: FakeSpeechRecognition,
+    });
+    Object.defineProperty(window, "SpeechRecognition", {
+      configurable: true,
+      value: FakeSpeechRecognition,
+    });
+  });
+  await openPlainBrowserGame(page);
+  await playMouseMove(page, "e2", "e3");
+
+  const mic = page.getByRole("button", { name: "Speak Black move" });
+  await expect(mic).toBeEnabled();
+  await mic.click();
+  await expect(page.getByRole("button", { name: "Stop listening" })).toBeVisible();
+  await page.evaluate(() =>
+    (
+      window as unknown as {
+        __emitBoardspeakSpeech: () => void;
+      }
+    ).__emitBoardspeakSpeech(),
+  );
+  await expect(page.getByRole("heading", { name: "White to move" })).toBeVisible();
+  await expect(page.locator(".move-entry").first()).toContainText(
+    "Black e7 moves to e6",
+  );
+  await page.getByText("Agent call trace", { exact: true }).click();
+  await expect(page.locator(".trace-entry").first()).toContainText("play_move");
+  await expect(page.locator(".trace-entry").first()).toContainText("e7-e6");
+});
+
+test("plain browsers without speech recognition keep a clear Black fallback", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "SpeechRecognition", {
+      configurable: true,
+      value: undefined,
+    });
+    Object.defineProperty(window, "webkitSpeechRecognition", {
+      configurable: true,
+      value: undefined,
+    });
+  });
+  await openPlainBrowserGame(page);
+  await playMouseMove(page, "e2", "e3");
+
+  await expect(page.getByRole("button", { name: "Mic unavailable" })).toBeDisabled();
+  await expect(
+    page.getByText(
+      "Voice input is unavailable here. Move Black with an agent or the mouse.",
+    ),
+  ).toBeVisible();
+});
+
 test("plain-browser setup can collapse without hiding the demo action", async ({
   page,
 }) => {
   await openPlainBrowserGame(page, "/?demo=1");
 
   await expect(
-    page.getByRole("heading", { name: "Voice play needs WebMCP" }),
+    page.getByRole("heading", { name: "Agent play needs WebMCP" }),
   ).toBeVisible();
   const demo = page.getByRole("button", { name: "Demo: agent turn" });
   await expect(demo).toBeVisible();
@@ -123,14 +233,14 @@ test("plain-browser setup can collapse without hiding the demo action", async ({
 
   await page.getByRole("button", { name: "Hide setup" }).click();
   await expect(
-    page.getByRole("heading", { name: "Voice play needs WebMCP" }),
+    page.getByRole("heading", { name: "Agent play needs WebMCP" }),
   ).toBeHidden();
   await expect(demo).toBeVisible();
   await expect(page.getByText("Plain browser mode")).toBeVisible();
 
   await page.getByRole("button", { name: "Show agent setup" }).click();
   await expect(
-    page.getByRole("heading", { name: "Voice play needs WebMCP" }),
+    page.getByRole("heading", { name: "Agent play needs WebMCP" }),
   ).toBeVisible();
 
   await page.getByText("How to play").click();
@@ -143,7 +253,7 @@ test("plain-browser setup can collapse without hiding the demo action", async ({
 test("practice mode gives Black a visible White bot reply", async ({ page }) => {
   await openPlainBrowserGame(page);
 
-  const practice = page.getByRole("button", { name: "Play the board" });
+  const practice = page.getByRole("button", { name: "Bot plays White" });
   await practice.click();
   await expect(practice).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("heading", { name: "Black to move" })).toBeVisible();

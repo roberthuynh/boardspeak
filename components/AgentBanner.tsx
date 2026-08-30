@@ -35,9 +35,10 @@ export function AgentBanner({
         id="agent-banner-instructions"
       >
         <div className="agent-banner-message">
-          <h2>Voice play needs WebMCP</h2>
+          <h2>Agent play needs WebMCP</h2>
           <p className="agent-banner-lede">
-            Mouse play works now. To let an agent play Black, choose either setup:
+            Mouse play works now, and Chrome can take direct Black moves from the
+            on-page mic. To let an AI agent play Black, choose either setup:
           </p>
           <ol>
             <li>

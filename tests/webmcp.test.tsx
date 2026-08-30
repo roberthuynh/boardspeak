@@ -22,6 +22,7 @@ import {
   type Square,
 } from "@/lib/breakthrough";
 import type { SessionState } from "@/lib/game";
+import { WHITE_TURN_INSTRUCTION } from "@/lib/tools";
 
 const INITIAL_WHITE_SURFACE = [
   "describe_board",
@@ -238,6 +239,8 @@ describe("the live WebMCP tool surface", () => {
   afterEach(() => {
     cleanup();
     delete window.__boardspeak;
+    Reflect.deleteProperty(window, "SpeechRecognition");
+    Reflect.deleteProperty(window, "webkitSpeechRecognition");
     Object.defineProperty(document, "modelContext", {
       configurable: true,
       value: undefined,
@@ -277,6 +280,119 @@ describe("the live WebMCP tool surface", () => {
     expect(currentSession().position.lastMove?.notation).toBe(played);
     expect(screen.getByRole("heading", { name: "White to move" })).toBeVisible();
     expect(container.querySelector('.trace-entry code')?.textContent).toBe("play_move");
+    expect(modelContext.duplicateErrors).toEqual([]);
+  });
+
+  it("teaches the agent how White moves in every relevant turn result", async () => {
+    const { container } = render(<Game />);
+    await waitFor(() => expect(modelContext.names()).toEqual(INITIAL_WHITE_SURFACE));
+
+    for (const name of [
+      "describe_board",
+      "get_rules",
+      "list_legal_moves",
+    ] as const) {
+      const result = await beginToolExecution(modelContext.tool(name), {});
+      expect(toolPayload<{ nextAction?: string }>(result).nextAction).toBe(
+        WHITE_TURN_INSTRUCTION,
+      );
+    }
+
+    await playWhiteWithMouse(
+      container,
+      legalMoves(currentSession().position, "white").find(
+        (move) => move.notation === "e2-e3",
+      )!,
+    );
+    await waitFor(() => expect(modelContext.active.has("play_move")).toBe(true));
+
+    const blackDescription = await beginToolExecution(
+      modelContext.tool("describe_board"),
+      {},
+    );
+    expect(toolPayload<{ nextAction?: string }>(blackDescription).nextAction).toBeUndefined();
+    const blackMoveList = await beginToolExecution(
+      modelContext.tool("list_legal_moves"),
+      {},
+    );
+    expect(toolPayload<{ nextAction?: string }>(blackMoveList)).not.toHaveProperty(
+      "nextAction",
+    );
+
+    const blackMove = moveEnum(modelContext.tool("play_move"))[0]!;
+    const playResult = await beginToolExecution(modelContext.tool("play_move"), {
+      move: blackMove,
+    });
+    expect(toolPayload<{ nextAction?: string }>(playResult).nextAction).toBe(
+      WHITE_TURN_INSTRUCTION,
+    );
+  });
+
+  it("executes a recognized Black move through the real traced tool path", async () => {
+    class FakeSpeechRecognition {
+      static instance: FakeSpeechRecognition | null = null;
+      continuous = false;
+      interimResults = false;
+      lang = "";
+      maxAlternatives = 1;
+      onstart: (() => void) | null = null;
+      onresult: ((event: {
+        results: ArrayLike<{ length: number; 0: { transcript: string } }>;
+      }) => void) | null = null;
+      onerror: ((event: { error: string }) => void) | null = null;
+      onend: (() => void) | null = null;
+
+      constructor() {
+        FakeSpeechRecognition.instance = this;
+      }
+
+      start() {
+        this.onstart?.();
+      }
+
+      abort() {
+        this.onerror?.({ error: "aborted" });
+      }
+
+      emit(transcript: string) {
+        this.onresult?.({
+          results: [{ 0: { transcript }, length: 1 }],
+        });
+      }
+    }
+
+    Object.defineProperty(window, "webkitSpeechRecognition", {
+      configurable: true,
+      value: FakeSpeechRecognition,
+    });
+    const { container } = render(<Game />);
+    await waitFor(() => expect(modelContext.names()).toEqual(INITIAL_WHITE_SURFACE));
+    await playWhiteWithMouse(
+      container,
+      legalMoves(currentSession().position, "white").find(
+        (move) => move.notation === "e2-e3",
+      )!,
+    );
+
+    const speak = await screen.findByRole("button", { name: "Speak Black move" });
+    fireEvent.click(speak);
+    FakeSpeechRecognition.instance?.emit("e seven to e six");
+
+    await waitFor(() =>
+      expect(currentSession().position.lastMove?.notation).toBe("e7-e6"),
+    );
+    expect(currentSession().history.at(-1)).toMatchObject({
+      notation: "e7-e6",
+      source: "agent",
+    });
+    await waitFor(() =>
+      expect(currentSession().trace[0]).toMatchObject({
+        name: "play_move",
+        args: { move: "e7-e6" },
+        isError: false,
+      }),
+    );
+    expect(modelContext.active.has("play_move")).toBe(false);
     expect(modelContext.duplicateErrors).toEqual([]);
   });
 

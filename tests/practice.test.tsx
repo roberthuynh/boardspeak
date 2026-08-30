@@ -72,11 +72,11 @@ describe("practice and coaching", () => {
     delete document.documentElement.dataset.boardspeakNativeWebmcp;
   });
 
-  it("moves White after 300ms in Play the board mode and records the bot source", async () => {
+  it("moves White after 300ms in Bot plays White mode and records the bot source", async () => {
     vi.useFakeTimers();
     render(<Game />);
 
-    const practiceToggle = screen.getByRole("button", { name: "Play the board" });
+    const practiceToggle = screen.getByRole("button", { name: "Bot plays White" });
     expect(practiceToggle).toHaveAttribute("aria-pressed", "false");
 
     fireEvent.click(practiceToggle);

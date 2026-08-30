@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { AgentBanner } from "./AgentBanner";
+import { BlackVoiceControl } from "./BlackVoiceControl";
 import { Board } from "./Board";
 import { CallTrace } from "./CallTrace";
 import { ConfirmProvider, useConfirm } from "./ConfirmModal";
@@ -41,6 +42,8 @@ import {
   MAX_TOOL_OUTPUT_LENGTH,
   NOTATION,
   RULES,
+  WHITE_BOT_INSTRUCTION,
+  WHITE_TURN_INSTRUCTION,
   assertObjectArgs,
   assertToolOutput,
   compactLegalMoves,
@@ -113,6 +116,28 @@ function requireNoArgs(value: unknown, tool: ToolName): void {
   if (keys.length > 0) {
     throw new Error(`${tool} does not accept parameters; retry with an empty object.`);
   }
+}
+
+function nextActionFor(state: SessionState): string | null {
+  if (
+    state.outcome ||
+    winner(state.position) ||
+    state.position.sideToMove !== "white"
+  ) {
+    return null;
+  }
+
+  return state.preferences.practice
+    ? WHITE_BOT_INSTRUCTION
+    : WHITE_TURN_INSTRUCTION;
+}
+
+function withTurnGuidance<Result extends object>(
+  state: SessionState,
+  result: Result,
+): Result & { readonly nextAction?: string } {
+  const nextAction = nextActionFor(state);
+  return nextAction ? { ...result, nextAction } : result;
 }
 
 function GameInner({
@@ -214,11 +239,17 @@ function GameInner({
       switch (name) {
         case "describe_board":
           requireNoArgs(rawArgs, name);
-          return checkedResult(name, sessionBoardPayload(current));
+          return checkedResult(
+            name,
+            withTurnGuidance(current, sessionBoardPayload(current)),
+          );
 
         case "get_rules":
           requireNoArgs(rawArgs, name);
-          return checkedResult(name, { rules: RULES, notation: NOTATION });
+          return checkedResult(
+            name,
+            withTurnGuidance(current, { rules: RULES, notation: NOTATION }),
+          );
 
         case "list_legal_moves": {
           requireNoArgs(rawArgs, name);
@@ -226,13 +257,13 @@ function GameInner({
           return checkedResult(
             name,
             compactLegalMoves(
-              {
+              withTurnGuidance(current, {
                 turn: current.position.sideToMove,
                 canPlayNow:
                   !gameOver && current.position.sideToMove === "black",
                 gameOver,
                 winner: effectiveWinner,
-              },
+              }),
               tagMoves(current.position, moves),
               toolOutputLimit,
             ),
@@ -245,7 +276,7 @@ function GameInner({
           }
           if (current.position.sideToMove !== "black") {
             throw new Error(
-              "It is White's turn; wait for White to move, then call list_legal_moves and retry.",
+              `It is White's turn. ${nextActionFor(current) ?? WHITE_TURN_INSTRUCTION}`,
             );
           }
 
@@ -260,13 +291,16 @@ function GameInner({
           const whiteReplies = preview.outcome
             ? []
             : legalMoves(preview.position, "white").map((reply) => reply.notation);
-          const result = checkedResult(name, {
-            played: move.notation,
-            capture: move.capture,
-            winner: preview.outcome?.winner ?? null,
-            whiteReplies,
-            board: sessionBoardPayload(preview).board,
-          });
+          const result = checkedResult(
+            name,
+            withTurnGuidance(preview, {
+              played: move.notation,
+              capture: move.capture,
+              winner: preview.outcome?.winner ?? null,
+              whiteReplies,
+              board: sessionBoardPayload(preview).board,
+            }),
+          );
           await dispatchAndCommit(action);
           return result;
         }
@@ -277,7 +311,7 @@ function GameInner({
           }
           if (current.position.sideToMove !== "black") {
             throw new Error(
-              "It is White's turn; wait for White to move, then call list_legal_moves and retry.",
+              `It is White's turn. ${nextActionFor(current) ?? WHITE_TURN_INSTRUCTION}`,
             );
           }
 
@@ -294,13 +328,16 @@ function GameInner({
           const whiteReplies = preview.outcome
             ? []
             : legalMoves(preview.position, "white").map((reply) => reply.notation);
-          const result = checkedResult(name, {
-            played: move.notation,
-            capture: true,
-            winner: preview.outcome?.winner ?? null,
-            whiteReplies,
-            board: sessionBoardPayload(preview).board,
-          });
+          const result = checkedResult(
+            name,
+            withTurnGuidance(preview, {
+              played: move.notation,
+              capture: true,
+              winner: preview.outcome?.winner ?? null,
+              whiteReplies,
+              board: sessionBoardPayload(preview).board,
+            }),
+          );
           await dispatchAndCommit(action);
           return result;
         }
@@ -318,13 +355,16 @@ function GameInner({
               "There are no immediate rank threats now; call describe_board to inspect the position.",
             );
           }
-          return checkedResult(name, {
-            threats: currentThreats.map((threat) => ({
-              side: threat.side,
-              square: threat.square,
-              goalRank: threat.goalRank,
-            })),
-          });
+          return checkedResult(
+            name,
+            withTurnGuidance(current, {
+              threats: currentThreats.map((threat) => ({
+                side: threat.side,
+                square: threat.square,
+                goalRank: threat.goalRank,
+              })),
+            }),
+          );
         }
 
         case "suggest_move": {
@@ -339,12 +379,15 @@ function GameInner({
             name,
           );
           const updated = await dispatchAndCommit({ type: "setSuggestion", move });
-          return checkedResult(name, {
-            suggested: move.notation,
-            moved: false,
-            awaitingPlayer: `Click ${move.to} to accept the ghost arrow.`,
-            board: sessionBoardPayload(updated).board,
-          });
+          return checkedResult(
+            name,
+            withTurnGuidance(updated, {
+              suggested: move.notation,
+              moved: false,
+              awaitingPlayer: `Click ${move.to} to accept the ghost arrow.`,
+              board: sessionBoardPayload(updated).board,
+            }),
+          );
         }
 
         case "resign_game": {
@@ -356,10 +399,13 @@ function GameInner({
             ? true
             : await confirm("Resign the game for Black?", signal);
           if (!accepted) {
-            return checkedResult(name, {
-              resigned: false,
-              reason: "cancelled by player",
-            });
+            return checkedResult(
+              name,
+              withTurnGuidance(stateRef.current, {
+                resigned: false,
+                reason: "cancelled by player",
+              }),
+            );
           }
           const updated = await dispatchAndCommit({ type: "resign", side: "black" });
           return checkedResult(name, {
@@ -377,19 +423,25 @@ function GameInner({
               ? true
               : await confirm("Start a new game and clear the current board?", signal);
           if (!accepted) {
-            return checkedResult(name, {
-              started: false,
-              reason: "cancelled by player",
-            });
+            return checkedResult(
+              name,
+              withTurnGuidance(stateRef.current, {
+                started: false,
+                reason: "cancelled by player",
+              }),
+            );
           }
           const updated = await dispatchAndCommit({
             type: "newGame",
             position: EVAL_MODE ? createEvalPosition() : undefined,
           });
-          return checkedResult(name, {
-            started: true,
-            board: sessionBoardPayload(updated).board,
-          });
+          return checkedResult(
+            name,
+            withTurnGuidance(updated, {
+              started: true,
+              board: sessionBoardPayload(updated).board,
+            }),
+          );
         }
       }
     },
@@ -527,6 +579,24 @@ function GameInner({
     () => movesFromSelection.map((move) => move.to),
     [movesFromSelection],
   );
+  const legalBlackNotations = useMemo(
+    () =>
+      state.outcome || state.position.sideToMove !== "black"
+        ? []
+        : legalMoves(state.position, "black").map((move) => move.notation),
+    [state.outcome, state.position],
+  );
+
+  const playSpokenBlackMove = useCallback(
+    async (notation: string) => {
+      await executeTool("play_move", { move: notation });
+    },
+    [executeTool],
+  );
+
+  const announceVoiceStatus = useCallback((message: string) => {
+    dispatch({ type: "announce", message });
+  }, []);
 
   const playMouseMove = useCallback(
     (move: Move) => {
@@ -606,6 +676,20 @@ function GameInner({
     state.outcome || (state.preferences.practice && turn === "white"),
   );
   const demoEnabled = !state.outcome && turn === "black";
+  const turnInstruction = state.outcome
+    ? "Game over. Start a new game to play again."
+    : turn === "white"
+      ? state.preferences.practice
+        ? "White’s bot is choosing a move now. Black’s voice and agent controls unlock next."
+        : "White uses the mouse: click a White pawn, then a highlighted square. Or turn on Bot plays White."
+      : "Black uses voice or an agent: use the on-page mic if shown, or ask your agent to move.";
+  const headerTurnCue = state.outcome
+    ? `${state.outcome.winner === "white" ? "White" : "Black"} won. Start a new game to play again.`
+    : turn === "white"
+      ? state.preferences.practice
+        ? "White’s bot is moving now. Black speaks next."
+        : "White to move now: click a White pawn, then a highlighted square."
+      : "Black to move now: speak a move or ask your agent.";
 
   return (
     <div className="game-shell">
@@ -626,9 +710,7 @@ function GameInner({
           <p className="tagline">Play it by hand. Play it by voice.</p>
         </div>
 
-        <p className="loop-explainer">
-          White clicks. Black speaks. The tool menu changes with the turn.
-        </p>
+        <p className="loop-explainer">{headerTurnCue}</p>
 
         <div className="game-controls" aria-label="Game preferences">
           <button
@@ -645,7 +727,7 @@ function GameInner({
             <span aria-hidden="true" className="toggle-track">
               <span className="toggle-thumb" />
             </span>
-            Play the board
+            Bot plays White
           </button>
           <button
             aria-pressed={state.preferences.narrate}
@@ -687,24 +769,65 @@ function GameInner({
           className="board-stage"
           id="game-board"
           aria-labelledby="board-heading"
+          aria-describedby="turn-instruction"
           tabIndex={-1}
         >
-          <div className="turn-bar">
-            <div>
-              <p className="panel-kicker">Move {Math.ceil(state.position.moveNumber / 2)}</p>
-              <h2 id="board-heading">
-                {state.outcome
-                  ? `${state.outcome.winner === "white" ? "White" : "Black"} wins`
-                  : `${turn === "white" ? "White" : "Black"} to move`}
-              </h2>
+          <div
+            className="turn-panel"
+            data-game-over={state.outcome ? "true" : undefined}
+            data-side={turn}
+          >
+            <div className="turn-bar">
+              <div className="turn-heading">
+                <p className="panel-kicker">
+                  Current turn · Move {Math.ceil(state.position.moveNumber / 2)}
+                </p>
+                <h2 id="board-heading">
+                  {state.outcome
+                    ? `${state.outcome.winner === "white" ? "White" : "Black"} wins`
+                    : `${turn === "white" ? "White" : "Black"} to move`}
+                </h2>
+              </div>
+
+              <dl className="player-input-map">
+                <div
+                  data-active={
+                    !state.outcome && turn === "white" ? "true" : undefined
+                  }
+                >
+                  <dt>White</dt>
+                  <dd>
+                    {state.preferences.practice ? "Bot" : "Mouse"}
+                    {!state.outcome && turn === "white" ? <span>Now</span> : null}
+                  </dd>
+                </div>
+                <div
+                  data-active={
+                    !state.outcome && turn === "black" ? "true" : undefined
+                  }
+                >
+                  <dt>Black</dt>
+                  <dd>
+                    Voice / agent
+                    {!state.outcome && turn === "black" ? <span>Now</span> : null}
+                  </dd>
+                </div>
+              </dl>
             </div>
-            <span className="turn-chip" data-side={turn}>
-              {state.preferences.practice && turn === "white"
-                ? "Board thinking…"
-                : turn === "white"
-                  ? "By hand"
-                  : "By voice or mouse"}
-            </span>
+
+            <div className="turn-action-row">
+              <p className="turn-instruction" id="turn-instruction">
+                {turnInstruction}
+              </p>
+              {!state.outcome && turn === "black" ? (
+                <BlackVoiceControl
+                  legalNotations={legalBlackNotations}
+                  onAnnounce={announceVoiceStatus}
+                  onMove={playSpokenBlackMove}
+                  showUnavailable={nativeSupported === false}
+                />
+              ) : null}
+            </div>
           </div>
 
           {gameWinner ? <p className="board-verdict">{gameWinner}</p> : null}

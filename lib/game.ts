@@ -76,6 +76,7 @@ export type GameAction =
   | { readonly type: "clearSuggestion" }
   | { readonly type: "setPractice"; readonly enabled: boolean }
   | { readonly type: "setNarration"; readonly enabled: boolean }
+  | { readonly type: "announce"; readonly message: string }
   | { readonly type: "addTrace"; readonly entry: ToolTraceEntry }
   | { readonly type: "setBannerDismissed"; readonly dismissed: boolean };
 
@@ -335,8 +336,8 @@ export function gameReducer(state: SessionState, action: GameAction): SessionSta
         ...state,
         preferences: { ...state.preferences, practice: action.enabled },
         announcement: action.enabled
-          ? "Practice mode on. The board will play White."
-          : "Practice mode off. Both sides are available by mouse.",
+          ? "White bot on. The bot will play White automatically."
+          : "White bot off. White returns to mouse control.",
         revision: nextRevision(state),
       };
 
@@ -345,6 +346,13 @@ export function gameReducer(state: SessionState, action: GameAction): SessionSta
         ...state,
         preferences: { ...state.preferences, narrate: action.enabled },
         announcement: action.enabled ? "Move narration on." : "Move narration off.",
+        revision: nextRevision(state),
+      };
+
+    case "announce":
+      return {
+        ...state,
+        announcement: action.message,
         revision: nextRevision(state),
       };
 

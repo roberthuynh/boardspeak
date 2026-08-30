@@ -8,7 +8,7 @@
 
 ## What it is
 
-Boardspeak is an open-source web implementation of Breakthrough, created by Dan Troyka, where White plays with a mouse and Black plays by talking to an AI agent. The page publishes the live board as WebMCP tools, so both players act on the same visible state and the legal tool surface changes with every turn.
+Boardspeak is an open-source web implementation of Breakthrough, created by Dan Troyka, where White plays with a mouse and Black plays by voice through an AI agent or the on-page Chrome microphone. The page publishes the live board as WebMCP tools, so both players act on the same visible state and the legal tool surface changes with every turn.
 
 > Demo video: final three-minute walkthrough coming before submission.
 
@@ -18,7 +18,7 @@ Boardspeak is an open-source web implementation of Breakthrough, created by Dan 
 
 ## Status
 
-Boardspeak is live at [boardspeak.vercel.app](https://boardspeak.vercel.app). The production release includes the complete Breakthrough engine, mouse game, nine-tool WebMCP surface, solo practice mode, layered narration, and an inspectable call trace for [The WebMCP Challenge](https://openai.com/webmcp-challenge/).
+Boardspeak is live at [boardspeak.vercel.app](https://boardspeak.vercel.app). The production release includes the complete Breakthrough engine, mouse game, nine-tool WebMCP surface, a legal-move microphone for Black, solo practice mode, layered narration, and an inspectable call trace for [The WebMCP Challenge](https://openai.com/webmcp-challenge/).
 
 ## Quick start
 
@@ -31,7 +31,9 @@ Open [http://localhost:3000](http://localhost:3000).
 
 Add `?demo=1` in a plain browser. After White moves, **Demo: agent turn** invokes one legal Black move through the same traced execution path an agent uses.
 
-Turn on **Play the board** to let the built-in White bot answer after 300ms. Black remains controlled by the agent or by mouse, so one person can demonstrate the complete game loop.
+Turn on **Bot plays White** to let the built-in White bot answer after 300ms. Black remains controlled by the agent, the on-page microphone, or the mouse, so one person can demonstrate the complete game loop.
+
+On Black's turn in Chrome, choose **Speak Black move** and say both squares, such as “e7 to e6” or “e7 takes d6.” Speech is matched only against the legal move enum for that turn, then runs through the same validated and traced `play_move` path as an agent call.
 
 Narration is on by default and needs no configuration. Without `OPENAI_API_KEY`, moves use the browser Web Speech API; with the key set only on the server, `/api/narrate` returns short AI-generated speech and silently falls back to Web Speech on any error.
 
@@ -92,11 +94,11 @@ return () => {
 
 | Tool | When it exists | Mode | Returns |
 |---|---|---:|---|
-| `describe_board` | Always | READ | Session-aware text, JSON snapshot, and outcome |
-| `get_rules` | Always | READ | Rules and notation |
-| `list_legal_moves` | Always | READ | Black notations grouped by intent, with totals, truncation status, game-over state, and winner |
-| `play_move` | Black to move | ACT | Move result and updated board |
-| `play_capture` | Black can capture | ACT | Capture result and updated board |
+| `describe_board` | Always | READ | Session-aware text, JSON snapshot, outcome, and White-turn next action |
+| `get_rules` | Always | READ | Rules, notation, and White-turn next action |
+| `list_legal_moves` | Always | READ | Black notations grouped by intent, with totals, truncation status, game-over state, winner, and White-turn next action |
+| `play_move` | Black to move | ACT | Move result, updated board, and White-turn next action |
+| `play_capture` | Black can capture | ACT | Capture result, updated board, and White-turn next action |
 | `list_threats` | A live game has a pawn one step from winning | READ | Threatening pieces by side |
 | `suggest_move` | White to move | ACT | A visible, non-binding move suggestion |
 | `resign_game` | A game is live | ACT | Confirmed resignation or cancellation |
@@ -136,16 +138,17 @@ pnpm build
 
 | Check | Result |
 |---|---:|
-| Unit, reducer, component, narration, and WebMCP contract tests | 72/72 PASS |
-| Chromium Playwright flows at desktop and 360px | 6/6 PASS |
+| Unit, reducer, component, narration, voice-input, and WebMCP contract tests | 79/79 PASS |
+| Chromium Playwright flows at desktop and 360px | 8/8 PASS |
 | Twenty plies plus tool-driven New Game against a duplicate-name-throwing registry | 0 `InvalidStateError` |
-| Browser console and uncaught page errors across the six end-to-end flows | 0 |
-| Lighthouse accessibility on the production build | [100](./public/readme/lighthouse-accessibility.html) |
+| Browser console and uncaught page errors across the eight end-to-end flows | 0 |
+| Lighthouse accessibility, mobile production URL | [100](https://boardspeak.vercel.app/readme/lighthouse-accessibility.html) |
+| Lighthouse accessibility, desktop production URL | [100](https://boardspeak.vercel.app/readme/lighthouse-accessibility-desktop.html) |
 | Next.js production build | PASS |
 
 ## Accessibility
 
-The board is a semantic grid of 64 native buttons with exact square and occupancy labels, including “legal destination” and “legal capture” on playable targets, visible keyboard focus, and a polite live move/win log. Three audio layers work in order: that always-available live region, the browser Web Speech API with no configuration, and optional OpenAI text-to-speech when a server-side key is present. Enhanced narration is disclosed in the interface as AI-generated. The agent-facing description and legal-move tools let a blind player understand and play the same visual position by conversation.
+The board is a semantic grid of 64 native buttons with exact square and occupancy labels, including “legal destination” and “legal capture” on playable targets, visible keyboard focus, and a polite live move/win log. Three audio layers work in order: that always-available live region, the browser Web Speech API with no configuration, and optional OpenAI text-to-speech when a server-side key is present. Chrome Speech Recognition also provides an on-page Black microphone that accepts only a currently legal source-and-destination pair. Enhanced narration is disclosed in the interface as AI-generated. The agent-facing description and legal-move tools let a blind player understand and play the same visual position by conversation.
 
 ## License
 
