@@ -4,13 +4,15 @@
 
 [Play Boardspeak](https://boardspeak.vercel.app)
 
+**[Watch the final demo](https://youtu.be/xrl2Woj9iRc)** · [Read the Devpost submission](https://devpost.com/software/boardspeak-see-the-tools-your-agent-can-use-in-a-game)
+
 **[Try Demo: agent turn on the live site](https://boardspeak.vercel.app/?demo=1).** It works in a plain browser: move White once, then use the demo control to send one legal Black move through the same traced executor an agent uses.
 
 ## What it is
 
-Boardspeak is an open-source web implementation of Breakthrough, created by Dan Troyka, where White plays with a mouse and Black plays by voice through an AI agent or the on-page Chrome microphone. The page publishes the live board as WebMCP tools, so both players act on the same visible state and the legal tool surface changes with every turn.
+Boardspeak is an open-source web implementation of Breakthrough (Dan Troyka, 2000): White plays with a mouse or built-in bot, while Black plays by talking or typing to an agent, using the on-page Chrome microphone, or clicking. An AI agent normally has two bad options for using a website, screenshot-and-guess or a separate MCP server; WebMCP is the third way, letting the page itself publish what the agent can do from the same live board state, with legal tools changing every turn.
 
-> Demo video: final three-minute walkthrough coming before submission.
+> Demo video: [watch the final three-minute walkthrough on YouTube](https://youtu.be/xrl2Woj9iRc).
 
 ![Boardspeak at the opening position, with the board and live WebMCP tool rail visible together](./public/readme/boardspeak-desktop.webp)
 
